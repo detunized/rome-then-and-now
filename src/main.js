@@ -307,6 +307,7 @@ function timelineState(s) {
     ghost: s > 0.001 && s < 2 ? -0.5 + outline * REBUILD_TOP : null,
     core: s > 1 ? (s >= 2 ? 1e6 : -0.5 + solid * REBUILD_TOP) : null,
     context: smooth(solid * 1.3),
+    occlusion: Math.min(1, Math.max(0, 1 - s / 0.2, (s - 1.8) / 0.2)),
     key: `${s.toFixed(3)} ${fadeModern}`,
   };
 }
@@ -476,7 +477,7 @@ let warmup = 60;
 let sampled = 0;
 let slow = 0;
 function watchFrameRate(delta) {
-  if (!autoQuality || document.hidden || delta > 1 || compare || stage !== stageTarget) return;
+  if (!autoQuality || document.hidden || delta > 1 || compare || stage !== stageTarget || hooks.fixedDelta !== null) return;
   if (warmup > 0) {
     warmup--;
     return;
@@ -491,9 +492,13 @@ function watchFrameRate(delta) {
   sampled = slow = 0;
 }
 
-function render(state, plain) {
+function render(state) {
   applyState(state);
-  if (composer && detailShading && plain) {
+  if (composer && detailShading) {
+    // Ambient occlusion fades out while the scene is in between eras, where outlines
+    // and dissolving layers would give it false shadows.
+    occlusion.enabled = state.occlusion > 0.001;
+    occlusion.blendIntensity = state.occlusion;
     composer.render();
     return;
   }
@@ -503,10 +508,14 @@ function render(state, plain) {
   renderer.render(scene, camera);
 }
 
+// Hooks for scripted camera moves and frame by frame video capture (see capture.js).
+const hooks = { beforeFrame: null, afterFrame: null, fixedDelta: null };
+
 function frame() {
   const rawDelta = clock.getDelta();
-  const dt = Math.min(rawDelta, 0.05);
+  const dt = hooks.fixedDelta ?? Math.min(rawDelta, 0.05);
   watchFrameRate(rawDelta);
+  if (hooks.beforeFrame) hooks.beforeFrame();
   if (stage !== stageTarget) {
     const step = dt / STAGE_SECONDS;
     stage = Math.abs(stageTarget - stage) <= step ? stageTarget : stage + Math.sign(stageTarget - stage) * step;
@@ -529,12 +538,12 @@ function frame() {
   renderer.setScissorTest(true);
   if (compare) {
     renderer.setScissor(0, 0, edge, height);
-    render(timelineState(2), true);
+    render(timelineState(2));
     renderer.setScissor(edge, 0, width - edge, height);
-    render(timelineState(0), true);
+    render(timelineState(0));
   } else {
     renderer.setScissor(0, 0, width, height);
-    render(timelineState(stage), stage === 0 || stage === 2);
+    render(timelineState(stage));
   }
 
   divider.style.display = compare ? 'block' : 'none';
@@ -544,6 +553,7 @@ function frame() {
     $(id).style.left = `${x}px`;
   }
   updateLabels(width, height);
+  if (hooks.afterFrame) hooks.afterFrame();
   requestAnimationFrame(frame);
 }
 
@@ -571,7 +581,14 @@ function start() {
   syncUi();
   $('loading').classList.add('done');
   window.app = {
-    sky, scene, camera, controls, renderer, sun, composer, applyQuality, setEra, setMode, setCompare, goToView, VIEWS,
+    sky, scene, camera, controls, renderer, sun, composer, applyQuality, setEra, setMode, setCompare, goToView, VIEWS, hooks,
+    // Renders at a fixed pixel width regardless of the window, for video capture.
+    setRenderWidth: (pixels) => {
+      renderer.setPixelRatio(pixels / window.innerWidth);
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      ghost.userData.line.linewidth = Math.max(1.3, 1.3 * renderer.getPixelRatio());
+      sizeComposer();
+    },
     getQuality: () => ({ quality, resolutionScale, ratio: renderer.getPixelRatio() }),
     setStage: (value) => {
       stage = stageTarget = value;
