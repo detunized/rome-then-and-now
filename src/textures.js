@@ -156,41 +156,6 @@ function blocks({ seed, cols, rows, joint = 0.04, base, jointColor, variation = 
   };
 }
 
-function roofTiles(seed) {
-  const noise = makeNoise(seed);
-  const cols = 4;
-  const rows = 3;
-  return (u, v, out) => {
-    const fx = u * cols - Math.floor(u * cols);
-    const row = Math.floor(v * rows);
-    const fy = v * rows - row;
-    const col = Math.floor(u * cols);
-    const ridge = Math.abs(fx - 0.5) < 0.17 ? Math.cos(((fx - 0.5) / 0.17) * Math.PI * 0.5) : 0;
-    const tone = 0.82 + 0.3 * hash2(col, row, seed) + 0.12 * (fbm(noise, u, v, 8, 4) - 0.5);
-    const shadow = fy < 0.06 ? 0.6 : 1;
-    const k = tone * shadow * (0.85 + 0.15 * ridge);
-    out[0] = 178 * k;
-    out[1] = 98 * k;
-    out[2] = 62 * k;
-    out[3] = ridge * 0.9 + (1 - fy) * 0.35;
-  };
-}
-
-function grass(seed) {
-  const noise = makeNoise(seed);
-  const noise2 = makeNoise(seed + 3);
-  return (u, v, out) => {
-    const patch = fbm(noise, u, v, 4, 5);
-    const fine = noise2(u * 180, v * 180, 180);
-    const dry = Math.max(0, Math.min(1, (patch - 0.52) * 5));
-    const k = 0.75 + 0.5 * fine;
-    out[0] = (96 + 58 * dry) * k;
-    out[1] = (116 + 22 * dry) * k;
-    out[2] = (58 + 26 * dry) * k;
-    out[3] = fine * 0.6 + patch * 0.3;
-  };
-}
-
 function planks(seed) {
   const noise = makeNoise(seed);
   const count = 12;
@@ -299,17 +264,18 @@ export function noiseTexture() {
 // Large scale weathering on top of a tiling texture: broad blotches, medium mottling and
 // vertical run-off streaks. Texture coordinates are in world units, so this follows the
 // building and hides the repetition of the tiles.
-function weather(target, strength) {
+function weather(target, strength, streaks) {
   target.onBeforeCompile = (shader) => {
     shader.uniforms.macroMap = { value: noiseTexture() };
     shader.uniforms.macroStrength = { value: strength };
+    shader.uniforms.macroStreaks = { value: streaks ? 1.1 : 0 };
     shader.fragmentShader = shader.fragmentShader
-      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D macroMap;\nuniform float macroStrength;')
+      .replace('#include <map_pars_fragment>', '#include <map_pars_fragment>\nuniform sampler2D macroMap;\nuniform float macroStrength;\nuniform float macroStreaks;')
       .replace('#include <map_fragment>', `#include <map_fragment>
         float macroWide = texture2D(macroMap, vMapUv * 0.031).r;
         float macroFine = texture2D(macroMap, vMapUv * 0.173 + 0.41).r;
         float macroStreak = texture2D(macroMap, vec2(vMapUv.x * 0.9, vMapUv.y * 0.035) + 0.17).r;
-        diffuseColor.rgb *= 1.0 + macroStrength * ((macroWide - 0.5) * 1.3 + (macroFine - 0.5) * 0.7 - max(0.0, macroStreak - 0.5) * 1.1);`);
+        diffuseColor.rgb *= 1.0 + macroStrength * ((macroWide - 0.5) * 1.3 + (macroFine - 0.5) * 0.7 - max(0.0, macroStreak - 0.5) * macroStreaks);`);
   };
   target.customProgramCacheKey = () => 'weathered';
 }
@@ -387,90 +353,26 @@ function flutes(seed) {
   };
 }
 
-// Travertine ashlar. The worn variant adds soot streaks and the holes left where
-// the iron clamps between blocks were dug out in the Middle Ages.
-function ashlar({ seed, cols, rows, base, worn }) {
-  const noise = makeNoise(seed);
-  const noise2 = makeNoise(seed + 7);
-  return (u, v, out) => {
-    const row = Math.floor(v * rows);
-    const fy = v * rows - row;
-    const shifted = u * cols + (row % 2) * 0.5 + hash2(row, 3, seed) * 0.2;
-    const col = ((Math.floor(shifted) % cols) + cols) % cols;
-    const fx = shifted - Math.floor(shifted);
-    const joint = worn ? 0.035 : 0.018;
-    const jx = joint * (cols / rows);
-    const edge = Math.min(fx / jx, (1 - fx) / jx, fy / joint, (1 - fy) / joint);
-    const n = fbm(noise, u, v, 8, 5);
-    const layers = fbm(noise2, u * 0.6, v * 5, 12, 3);
-    const fine = noise2(u * 200, v * 200, 200);
-    let k = (worn ? 0.9 : 0.95) + (worn ? 0.15 : 0.09) * hash2(col, row, seed + 1) * (0.6 + 0.8 * n);
-    k -= (worn ? 0.1 : 0.04) * Math.max(0, layers - 0.5) * 2;
-    let height = 1;
-    if (worn) {
-      const streak = fbm(noise, u * 4, v * 0.35, 6, 3);
-      k -= 0.14 * Math.max(0, streak - 0.52) * 2;
-      k -= fine > 0.87 ? 0.1 : 0;
-      const present = hash2(col, row, seed + 2);
-      const hx = present < 0.3 ? 0.1 : present < 0.45 ? 0.9 : -1;
-      const hole = Math.hypot((fx - hx) * (rows / cols) * 2.2, fy - 0.5 - (hash2(col, row, seed + 4) - 0.5) * 0.3);
-      if (hx > 0 && hole < 0.17) {
-        const depth = 1 - hole / 0.17;
-        k *= 1 - 0.75 * Math.min(1, depth * 2.5);
-        height = 1 - depth;
-      }
-    }
-    const j = edge < 1 ? (worn ? 0.68 : 0.8) + (worn ? 0.32 : 0.2) * Math.max(0, edge) : 1;
-    out[0] = base[0] * k * j;
-    out[1] = base[1] * k * j;
-    out[2] = base[2] * k * j;
-    out[3] = height * (edge < 1 ? 0.3 + 0.7 * Math.max(0, edge) : 1) * 0.7 + n * 0.2 + fine * (worn ? 0.12 : 0.03);
-  };
-}
-
-function rubble(seed) {
-  const noise = makeNoise(seed);
-  return (u, v, out) => {
-    const cells = 14;
-    const cx = Math.floor(u * cells);
-    const cy = Math.floor(v * cells);
-    let nearest = 9;
-    let tone = 0;
-    for (let j = -1; j <= 1; j++) {
-      for (let i = -1; i <= 1; i++) {
-        const gx = cx + i;
-        const gy = cy + j;
-        const wx = ((gx % cells) + cells) % cells;
-        const wy = ((gy % cells) + cells) % cells;
-        const px = gx + hash2(wx, wy, seed);
-        const py = gy + hash2(wx, wy, seed + 9);
-        const d = Math.hypot(u * cells - px, v * cells - py);
-        if (d < nearest) {
-          nearest = d;
-          tone = hash2(wx, wy, seed + 21);
-        }
-      }
-    }
-    const n = fbm(noise, u, v, 10, 4);
-    const stoneMask = nearest < 0.38 ? 1 : 0;
-    const k = stoneMask ? 0.7 + 0.5 * tone : 0.9 + 0.25 * n;
-    out[0] = (stoneMask ? 134 : 150) * k;
-    out[1] = (stoneMask ? 114 : 134) * k;
-    out[2] = (stoneMask ? 92 : 112) * k;
-    out[3] = stoneMask ? 0.9 - nearest : 0.3 * n;
-  };
-}
-
+// Photo textures are CC0 scans from Poly Haven, stored in assets/textures. `tile` is the
+// size in metres that one repeat covers, chosen so that blocks and bricks have a sensible size.
 const definitions = {
+  travertineWorn: { tile: 3.3, photo: 'large_sandstone_blocks_01' },
+  travertineBlocks: { tile: 4.5, photo: 'sandstone_blocks_08' },
+  tufa: { tile: 5, photo: 'seaworn_sandstone_brick' },
+  rubble: { tile: 2.5, photo: 'medieval_blocks_02' },
+  brick: { tile: 2, photo: 'church_bricks_02' },
+  brickOld: { tile: 1.5, photo: 'castle_brick_02_red' },
+  roofTile: { tile: 6, photo: 'clay_roof_tiles_02' },
+  cobble: { tile: 2, photo: 'square_cobblestone' },
+  plazaPave: { tile: 8, photo: 'rock_tile_floor' },
+  grass: { tile: 3, photo: 'leafy_grass' },
+  sand: { tile: 3, photo: 'sand_01' },
   marble: { tile: 4, size: 512, strength: 1.2, shade: stone({ seed: 1, base: [226, 220, 208], variation: 0.06, veins: 0.08 }) },
   marbleOld: { tile: 4, size: 512, strength: 3, shade: stone({ seed: 2, base: [204, 194, 176], variation: 0.14, stain: 0.6, speckle: 0.08, bump: 0.8 }) },
-  plazaPave: { tile: 12, size: 1024, strength: 2, shade: slabPaving({ seed: 41, rows: 10, slabs: 5, base: [222, 208, 180], variation: 0.06, streak: 0.07, pits: 0.1 }) },
   porticoPave: { tile: 8, size: 512, strength: 1.5, shade: slabPaving({ seed: 42, rows: 8, slabs: 4, base: [230, 226, 218], variation: 0.035, streak: 0.03 }) },
   garlandRelief: { tile: 4, size: 512, strength: 5, shade: garlandRelief(43) },
   marbleFluted: { tile: 1, size: 256, strength: 6, shade: flutes(44) },
   giallo: { tile: 2, size: 256, strength: 1, shade: stone({ seed: 45, base: [216, 168, 88], variation: 0.12, veins: 0.3, stain: 0.2 }) },
-  travertineBlocks: { tile: 4.8, size: 1024, strength: 2.5, shade: ashlar({ seed: 51, cols: 3, rows: 6, base: [230, 219, 198], worn: false }) },
-  travertineWorn: { tile: 4.8, size: 1024, strength: 6, shade: ashlar({ seed: 52, cols: 3, rows: 6, base: [206, 188, 160], worn: true }) },
   facadeAncient: { tile: 12, size: 512, strength: 2, shade: facade(31, false) },
   facadeModern: { tile: 12, size: 512, strength: 2, shade: facade(32, true) },
   marbleAshlar: {
@@ -482,52 +384,44 @@ const definitions = {
     shade: blocks({ seed: 4, cols: 3, rows: 5, joint: 0.035, base: [216, 206, 186], jointColor: [120, 110, 96], variation: 0.07, grain: 0.07, bump: 0.6 }),
   },
   travertine: { tile: 3, size: 512, strength: 2.5, shade: stone({ seed: 5, base: [214, 202, 180], variation: 0.1, stain: 0.25, speckle: 0.1, bump: 0.8 }) },
-  tufa: {
-    tile: 3.2, size: 512, strength: 4,
-    shade: blocks({ seed: 6, cols: 2, rows: 4, joint: 0.02, base: [172, 154, 126], jointColor: [128, 112, 92], variation: 0.07, grain: 0.16, bump: 1, stagger: 0.37 }),
-  },
-  tufaOld: {
-    tile: 2.4, size: 512, strength: 5,
-    shade: blocks({ seed: 7, cols: 2, rows: 4, joint: 0.04, base: [140, 122, 100], jointColor: [84, 72, 60], variation: 0.15, grain: 0.22, bump: 1 }),
-  },
-  brick: {
-    tile: 1.2, size: 512, strength: 3,
-    shade: blocks({ seed: 8, cols: 4, rows: 18, joint: 0.16, base: [166, 106, 78], jointColor: [190, 176, 156], variation: 0.16, grain: 0.1, bump: 1 }),
-  },
-  brickOld: {
-    tile: 1.2, size: 512, strength: 4,
-    shade: blocks({ seed: 9, cols: 4, rows: 18, joint: 0.2, base: [150, 92, 64], jointColor: [150, 136, 116], variation: 0.24, grain: 0.18, bump: 1 }),
-  },
-  cobble: {
-    tile: 2, size: 512, strength: 3,
-    shade: blocks({ seed: 10, cols: 16, rows: 16, joint: 0.12, base: [128, 126, 124], jointColor: [74, 72, 70], variation: 0.16, grain: 0.1, bump: 1 }),
-  },
   basalt: {
     tile: 3, size: 512, strength: 3,
     shade: blocks({ seed: 11, cols: 4, rows: 5, joint: 0.06, base: [78, 76, 78], jointColor: [36, 34, 34], variation: 0.2, grain: 0.12, bump: 1, stagger: 0.37 }),
   },
-  roofTile: { tile: 1.8, size: 512, strength: 5, shade: roofTiles(12) },
-  grass: { tile: 9, size: 512, strength: 2.5, shade: grass(13) },
   dirt: { tile: 7, size: 512, strength: 2.5, shade: stone({ seed: 14, base: [164, 148, 116], variation: 0.16, speckle: 0.2, bump: 1 }) },
   asphalt: { tile: 4, size: 256, strength: 1.5, shade: stone({ seed: 15, base: [66, 66, 70], variation: 0.06, speckle: 0.25, bump: 0.5 }) },
   wood: { tile: 1.8, size: 256, strength: 3, shade: planks(16) },
-  rubble: { tile: 3, size: 512, strength: 5, shade: rubble(17) },
   plaster: { tile: 6, size: 512, strength: 1.2, shade: stone({ seed: 18, base: [232, 222, 204], variation: 0.06, stain: 0.3, bump: 0.5 }) },
   granite: { tile: 1.5, size: 256, strength: 0.8, shade: stone({ seed: 19, base: [150, 147, 143], variation: 0.1, speckle: 0.3, freq: 24, bump: 0.3 }) },
 };
 
 const cache = new Map();
 
+const loader = new THREE.TextureLoader();
+
+function photo(file, colour) {
+  const loaded = loader.load(`./assets/textures/${file}.jpg`);
+  loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
+  loaded.anisotropy = 8;
+  if (colour) loaded.colorSpace = THREE.SRGBColorSpace;
+  return loaded;
+}
+
 function texture(name) {
   if (!cache.has(name)) {
     const d = definitions[name];
-    cache.set(name, bake(d.size, d.shade, d.strength));
+    cache.set(name, d.photo
+      ? { map: photo(`${d.photo}_diff`, true), normalMap: photo(`${d.photo}_nor`, false) }
+      : bake(d.size, d.shade, d.strength));
   }
   return cache.get(name);
 }
 
+// Colour multiplier that may exceed 1, to lift a photo texture that is darker than the stone it stands for.
+const tint = (r, g, b) => new THREE.Color().setRGB(r, g, b);
+
 export function material(name, options = {}) {
-  const { color = 0xffffff, roughness = 0.85, metalness = 0, normalScale = 1, side = THREE.FrontSide, weathering = 0.22 } = options;
+  const { color = 0xffffff, roughness = 0.85, metalness = 0, normalScale = 1, side = THREE.FrontSide, weathering = 0.22, streaks = true } = options;
   const t = texture(name);
   const m = new THREE.MeshStandardMaterial({
     map: t.map,
@@ -539,7 +433,7 @@ export function material(name, options = {}) {
     side,
   });
   m.userData.tile = definitions[name].tile;
-  if (weathering > 0) weather(m, weathering);
+  if (weathering > 0) weather(m, weathering, streaks);
   return m;
 }
 
@@ -557,24 +451,24 @@ export function createMaterials() {
     marbleOldDouble: material('marbleOld', { roughness: 0.9, side: THREE.DoubleSide, weathering: 0 }),
     marbleAshlar: material('marbleAshlar', { roughness: 0.55 }),
     frieze: material('marble', { roughness: 0.6, color: 0xe9dfcf }),
-    travertinePave: material('travertinePave', { roughness: 0.75 }),
+    travertinePave: material('travertinePave', { roughness: 0.75, streaks: false }),
     travertine: material('travertine', { roughness: 0.8 }),
     travertineOld: material('travertine', { roughness: 0.95, color: 0xb9ad98 }),
     tufa: material('tufa', { roughness: 0.95 }),
-    tufaOld: material('tufaOld', { roughness: 1, weathering: 0.5 }),
+    tufaOld: material('tufa', { roughness: 1, weathering: 0.5, color: tint(0.78, 0.74, 0.68) }),
     brick: material('brick', { roughness: 0.9 }),
     brickOld: material('brickOld', { roughness: 1, weathering: 0.5 }),
-    cobble: material('cobble', { roughness: 0.85, weathering: 0.35 }),
-    basalt: material('basalt', { roughness: 0.8 }),
+    cobble: material('cobble', { roughness: 0.85, weathering: 0.35, streaks: false, color: tint(1.3, 1.28, 1.25) }),
+    basalt: material('basalt', { roughness: 0.8, streaks: false }),
     roofTile: material('roofTile', { roughness: 0.85 }),
     roofTileOld: material('roofTile', { roughness: 0.95, color: 0xc9b9a6 }),
-    grass: material('grass', { roughness: 1, weathering: 0.4 }),
-    dirt: material('dirt', { roughness: 1 }),
-    cityGround: material('dirt', { roughness: 1, color: 0xcabfae }),
-    asphalt: material('asphalt', { roughness: 0.9 }),
+    grass: material('grass', { roughness: 1, weathering: 0.4, streaks: false, color: tint(0.86, 1.14, 0.74) }),
+    dirt: material('dirt', { roughness: 1, streaks: false }),
+    cityGround: material('dirt', { roughness: 1, streaks: false, color: 0xcabfae }),
+    asphalt: material('asphalt', { roughness: 0.9, streaks: false }),
     wood: material('wood', { roughness: 0.85 }),
     timber: material('wood', { roughness: 0.9, color: 0x9a8468 }),
-    rubble: material('rubble', { roughness: 1, weathering: 0.5 }),
+    rubble: material('rubble', { roughness: 1, weathering: 0.5, color: tint(0.8, 0.76, 0.72) }),
     plaster: material('plaster', { roughness: 0.9 }),
     plasterOchre: material('plaster', { roughness: 0.9, color: 0xe2b877 }),
     plasterRed: material('plaster', { roughness: 0.9, color: 0xb5553f }),
@@ -593,16 +487,16 @@ export function createMaterials() {
       })),
     },
     granite: material('granite', { roughness: 0.45, weathering: 0 }),
-    plazaPave: material('plazaPave', { roughness: 0.8 }),
-    porticoPave: material('porticoPave', { roughness: 0.45 }),
+    plazaPave: material('plazaPave', { roughness: 0.8, streaks: false, color: tint(1.5, 1.4, 1.18) }),
+    porticoPave: material('porticoPave', { roughness: 0.45, streaks: false }),
     garlandRelief: material('garlandRelief', { roughness: 0.6 }),
     marbleFluted: material('marbleFluted', { roughness: 0.5, weathering: 0 }),
     giallo: material('giallo', { roughness: 0.35, weathering: 0 }),
     skin: flat(0xc99a78, { roughness: 0.9 }),
     cloth: [0xf1ece0, 0xf1ece0, 0xe9dfc8, 0xa8372f, 0x3f5f9a, 0xc9953f, 0x5f7f4f, 0x7a5a44].map((color) => flat(color, { roughness: 0.95 })),
-    travertineBlocks: material('travertineBlocks', { roughness: 0.8 }),
-    travertineWorn: material('travertineWorn', { roughness: 0.95, weathering: 0.55 }),
-    sand: material('dirt', { roughness: 1, color: 0xf2dcae }),
+    travertineBlocks: material('travertineBlocks', { roughness: 0.8, color: tint(1.3, 1.27, 1.2) }),
+    travertineWorn: material('travertineWorn', { roughness: 0.95, weathering: 0.35 }),
+    sand: material('sand', { roughness: 1, streaks: false, color: tint(1.2, 1.15, 1.0) }),
     graniteOld: material('granite', { roughness: 0.8, color: 0xc4bdb2, weathering: 0 }),
     rust: flat(0x5b3a2a, { roughness: 0.7, metalness: 0.5 }),
     bronze: flat(0x6b4a26, { roughness: 0.35, metalness: 0.9 }),
