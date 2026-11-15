@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from './textures.js';
 import {
   Builder, place, instanced, columnParts, brokenShaft, wallGeometry, wallMatrix, raggedProfile, roofSlab,
-  gableRoof, entablature, stonePine, cypress, cityGrid, cityBlock,
+  gableRoof, entablature, stonePine, cypress, cityGrid, cityBlock, robedFigure,
 } from './parts.js';
 import { LAYOUT, porticoColumnSites, tabernaeBays, buildCuria } from './ancient.js';
 
@@ -414,6 +414,24 @@ function buildBoardwalk(B, M) {
   }
 }
 
+function buildVisitors(B, M, rng) {
+  const person = (x, y, z) => {
+    const cloth = M.cloth[2 + Math.floor(rng() * (M.cloth.length - 2))];
+    robedFigure(B, cloth, M.skin, x, y, z, 1.6 + rng() * 0.25, rng() * Math.PI * 2);
+  };
+  for (const [ax, az, bx, bz] of [[69, -9, 52, -9], [52, -9, 36, -4], [36, -4, 18, -6], [18, -6, 2, 2], [2, 2, -14, 0], [-14, 0, -30, 8], [-30, 8, -38, 17], [-38, 17, -56, 19]]) {
+    const count = 1 + Math.floor(rng() * 4);
+    for (let i = 0; i < count; i++) {
+      const t = rng();
+      person(ax + (bx - ax) * t + (rng() - 0.5) * 1.2, 0.57, az + (bz - az) * t + (rng() - 0.5) * 1.2);
+    }
+  }
+  for (let i = 0; i < 40; i++) {
+    const [x, z] = alongRoad(-170 + rng() * 340, rng() < 0.6 ? 2 + rng() * 6 : 32 + rng() * 6);
+    person(x, STREET + 0.16, z);
+  }
+}
+
 function buildFragments(B, M, rng, capital) {
   const stones = [M.marbleOld, M.marbleOld, M.travertineOld, M.tufaOld];
   const inPit = (x, z) => {
@@ -505,6 +523,7 @@ export function buildToday(M) {
   buildTabernaeRuin(B, M, rng);
   buildBoardwalk(B, M);
   buildFragments(B, M, rng, portico.capital);
+  buildVisitors(B, M, rng);
   buildCity(B, M, rng);
   for (const [x, z, h] of [[62, 4, 15], [112, -24, 14], [118, -40, 16], [-80, 22, 13]]) stonePine(B, M, x, 0, z, h, rng);
   B.span(M.grass, -148, -92, STREET, STREET + 0.12, -42, 22);

@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { makeRng } from './textures.js';
 import {
   Builder, place, instanced, linspace, columnParts, wallGeometry, wallMatrix, roofSlab, gableRoof,
-  gablePrism, stairs, entablature, cypress, stonePine, blockBuilding, cityGrid, cityBlock,
+  gablePrism, stairs, entablature, cypress, stonePine, blockBuilding, cityGrid, cityBlock, robedFigure, statue,
 } from './parts.js';
 
 // Axes: +X runs from the temple (north-west) to the Curia (south-east),
@@ -55,43 +55,55 @@ function buildTemple(B, M, columns) {
   B.span(M.marble, -30.9, 0.3, 0, 0.7, -hw - 0.3, hw + 0.3);
   B.span(M.marble, -30.8, 0.15, P - 0.4, P, -hw - 0.2, hw + 0.2);
 
-  stairs(B, M.marble, { x: 2.4, z: 0, dx: -1, dz: 0, width: hw * 2, count: 8, rise: 0.2, run: 0.3, y0: 3.4 });
+  stairs(B, M.travertine, { x: 2.4, z: 0, dx: -1, dz: 0, width: hw * 2, count: 8, rise: 0.2, run: 0.3, y0: 3.4 });
   B.span(M.marbleAshlar, 0, 2.4, 0, 3.4, -hw, hw);
   B.span(M.marbleAshlar, 2.4, 8.4, 0, 3.4, -8.9, 8.9);
   B.span(M.marble, 2.4, 8.55, 3.4, 3.6, -8.9, 8.9);
   B.span(M.marble, 8.25, 8.55, 3.6, 4.4, -8.9, 8.9);
   for (const s of [-1, 1]) {
-    stairs(B, M.marble, { x: 8.4, z: s * 10.2, dx: -1, dz: 0, width: 2.6, count: 17, rise: 0.2, run: 0.3, y0: 0 });
+    stairs(B, M.travertine, { x: 8.4, z: s * 10.2, dx: -1, dz: 0, width: 2.6, count: 17, rise: 0.2, run: 0.3, y0: 0 });
     B.span(M.marbleAshlar, 2.4, 3.3, 0, 3.4, s * 8.9, s * hw);
     B.span(M.marble, 3.3, 8.6, 0, 4.3, s * (hw - 0.05), s * (hw + 0.3));
   }
 
-  for (const s of [-1, 1]) {
-    B.span(M.marble, 10.5, 14.5, 0, 0.9, s * 2.5, s * 9.5);
-    B.span(M.water, 10.9, 14.1, 0.9, 0.93, s * 2.9, s * 9.1);
-    B.span(M.marble, 10.5, 14.5, 0.9, 1.05, s * 2.5, s * 2.8);
-    B.span(M.marble, 10.5, 14.5, 0.9, 1.05, s * 9.2, s * 9.5);
-    B.span(M.marble, 10.5, 10.8, 0.9, 1.05, s * 2.5, s * 9.5);
-    B.span(M.marble, 14.2, 14.5, 0.9, 1.05, s * 2.5, s * 9.5);
+  // The Appiades fountain: three basins in front of the podium, with nymph statues.
+  for (const c of [-6.6, 0, 6.6]) {
+    B.span(M.marble, 10.5, 14.5, 0, 0.9, c - 2.9, c + 2.9);
+    B.span(M.water, 10.9, 14.1, 0.9, 0.93, c - 2.5, c + 2.5);
+    B.span(M.marble, 10.5, 14.5, 0.9, 1.05, c - 2.9, c - 2.6);
+    B.span(M.marble, 10.5, 14.5, 0.9, 1.05, c + 2.6, c + 2.9);
+    B.span(M.marble, 10.5, 10.8, 0.9, 1.05, c - 2.9, c + 2.9);
+    B.span(M.marble, 14.2, 14.5, 0.9, 1.05, c - 2.9, c + 2.9);
   }
+  for (const z of [-9.9, -3.3, 3.3, 9.9]) robedFigure(B, M.marble, M.marble, 9.6, 0.9, z, 1.9, 0);
+  for (const z of [-9.9, -3.3, 3.3, 9.9]) B.box(M.marble, 9.6, 0, z, 0.8, 0.9, 0.8);
 
   const top = P + T.H;
   B.span(M.marbleAshlar, -28.6, -9.4, P, top, -7.6, -6.8);
   B.span(M.marbleAshlar, -28.6, -9.4, P, top, 6.8, 7.6);
   B.span(M.marbleAshlar, -28.6, -27.3, P, top, -11.18, 11.18);
   B.add(wallGeometry(15.2, T.H, 0.8, [{ x: 7.6, y: 0, w: 4.4, h: 9 }]), M.marbleAshlar, wallMatrix(-8.6, P, -7.6, 'z'));
-  B.span(M.bronze, -9.25, -9.1, P, P + 9, -2.2, 2.2);
-  B.span(M.gilt, -9.08, -9.02, P + 0.4, P + 8.6, -0.06, 0.06);
+  // Bronze doors stand open, showing the cella: giallo antico columns along the walls
+  // and the statue of Venus Genetrix at the far end.
   for (const s of [-1, 1]) {
     B.span(M.marble, -8.75, -8.45, P, P + 9.3, s * 2.2, s * 2.65);
-    for (let i = 0; i < 4; i++) B.span(M.gilt, -9.08, -9.03, P + 0.6 + i * 2.1, P + 2.3 + i * 2.1, s * 0.35, s * 1.9);
+    B.span(M.bronze, -11.5, -9.4, P, P + 9, s * 2.2, s * 2.34);
+    for (let i = 0; i < 4; i++) B.span(M.gilt, -11.2, -9.7, P + 0.6 + i * 2.1, P + 2.3 + i * 2.1, s * 2.17, s * 2.2);
+    B.span(M.marble, -27, -11, P + 9.4, P + 10.2, s * 5.2, s * 6.8);
+    for (let i = 0; i < 6; i++) columns.cella.push(B.transform.clone().multiply(place(-12.5 - i * 2.8, P, s * 6)));
+  }
+  B.span(M.marbleAshlar, -26.9, -24.3, P, P + 1.6, -1.6, 1.6);
+  robedFigure(B, M.marble, M.marble, -25.6, P + 1.6, 0, 4.4, 0, true);
+  for (const s of [-1, 1]) {
+    B.span(M.garlandRelief, -28.5, -9.5, P + 5, P + 6.5, s * 7.6, s * 7.66);
   }
   B.span(M.marble, -8.8, -8.4, P + 9, P + 9.6, -2.9, 2.9);
   B.span(M.marbleAshlar, -9.4, -27.3, P, P + 0.05, -6.8, 6.8);
 
-  B.add(new THREE.CylinderGeometry(5, 5, 16.5, 28), M.marbleAshlar, new THREE.Matrix4().setPosition(-28.6, 8.25, 0));
+  // The apse is only the outer half of a cylinder, so that it does not fill the cella.
+  B.add(new THREE.CylinderGeometry(5, 5, 16.5, 20, 1, false, Math.PI, Math.PI), M.marbleAshlar, new THREE.Matrix4().setPosition(-28.6, 8.25, 0));
   B.add(
-    new THREE.SphereGeometry(5.25, 28, 10, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.55, 1),
+    new THREE.SphereGeometry(5.25, 20, 10, -Math.PI / 2, Math.PI, 0, Math.PI / 2).scale(1, 0.55, 1),
     M.lead,
     new THREE.Matrix4().setPosition(-28.6, 16.5, 0),
     { keepUV: true },
@@ -114,10 +126,21 @@ function buildTemple(B, M, columns) {
       roofSlab(B, M.marble, { a0, a1, low: s * (half + 0.3), high: 0, yLow: eave - 0.38, yHigh: eave + rise - 0.3, thick: 0.5 });
     }
     B.span(M.marble, ex1 + 0.2, ex1 + 1.4, eave, eave + 0.7, s * (half - 1.0), s * (half + 0.1));
-    acroterion(B, M.marble, ex1 + 0.8, eave + 0.7, s * (half - 0.45), 0.6);
+    acroterion(B, M.bronze, ex1 + 0.8, eave + 0.7, s * (half - 0.45), 0.6);
   }
   B.span(M.marble, ex1 + 0.2, ex1 + 1.4, eave + rise - 0.2, eave + rise + 0.6, -0.8, 0.8);
-  acroterion(B, M.marble, ex1 + 0.8, eave + rise + 0.6, 0, 1.0);
+  acroterion(B, M.bronze, ex1 + 0.8, eave + rise + 0.6, 0, 1.0);
+
+  // Pediment sculpture and a bronze inscription on the frieze.
+  const tympanum = rise * (ez / half);
+  for (let k = -3; k <= 3; k++) {
+    robedFigure(B, M.marble, M.marble, ex1 + 0.05, eave, k * 2.5, tympanum * (1 - Math.abs(k) * 2.5 / ez) * 0.82, Math.PI / 2 * (k < 0 ? 1 : -1), k !== 0);
+  }
+  for (let i = 0; i < 40; i++) {
+    if (i % 8 === 7) continue;
+    B.span(M.gilt, ex1, ex1 + 0.03, top + 1.25, top + 1.65, -8.2 + i * 0.42, -8.2 + i * 0.42 + 0.2);
+  }
+  for (const s of [-1, 1]) statue(B, M, 5.4, 3.6, s * 7.4, 0, M.bronze, 2.6);
 
   for (const site of templeColumnSites()) {
     columns.temple.push(B.transform.clone().multiply(place(site.x, P, site.z)));
@@ -169,19 +192,28 @@ function buildPorticoes(B, M, columns) {
   const top = S + L.column.H;
   const eave = top + L.E;
 
-  B.span(M.travertinePave, L.x0, L.plazaX1, -0.4, 0, -L.plazaZ, L.plazaZ);
+  // Basilica Argentaria: at the temple end of the Capitoline side, tufa piers replace the columns.
+  const pier = (x, z) => {
+    B.box(M.tufa, x, S, z, 1.5, L.column.H - 0.4, 1.5);
+    B.box(M.travertine, x, S + L.column.H - 0.4, z, 1.8, 0.4, 1.8);
+  };
+  const support = (list, x, z) => {
+    if (z < 0 && x < -52) pier(x, z);
+    else list.push(place(x, S, z));
+  };
+  B.span(M.plazaPave, L.x0, L.plazaX1, -0.4, 0, -L.plazaZ, L.plazaZ);
   for (const s of [-1, 1]) {
-    B.span(M.travertinePave, L.x0, L.x1, -0.4, S, s * L.plazaZ, s * L.wallZ);
+    B.span(M.porticoPave, L.x0, L.x1, -0.4, S, s * L.plazaZ, s * L.wallZ);
     stairs(B, M.marble, { x: 0, z: s * (L.plazaZ - 0.8), dx: 0, dz: s, width: L.x1 - L.x0, count: 2, rise: 0.3, run: 0.4, y0: 0 });
-    for (const x of frontXs) columns.portico.push(place(x, S, s * L.frontZ));
-    for (const x of midXs) columns.portico.push(place(x, S, s * L.midZ));
+    for (const x of frontXs) support(columns.portico, x, s * L.frontZ);
+    for (const x of midXs) support(columns.portico, x, s * L.midZ);
     const zf = s * L.frontZ;
     entablature(B, M, { x0: -78.6, x1: L.seFrontX + 0.5, z0: zf - 0.5, z1: zf + 0.5, y: top, E: L.E });
     B.span(M.marble, -78.6, L.seMidX + 0.4, top, eave, s * L.midZ - 0.4, s * L.midZ + 0.4);
     B.span(M.timber, L.x0, L.x1, eave - 0.05, eave + 0.12, s * (L.frontZ - 0.5), s * L.wallZ);
     gableRoof(B, M.roofTile, { a0: L.x0, a1: L.x1, b0: Math.min(s * (L.frontZ - 1.3), s * L.wallZ), b1: Math.max(s * (L.frontZ - 1.3), s * L.wallZ), y: eave + 0.1, rise: 2.2, overhang: 0.1, ridge: s * L.midZ });
   }
-  B.span(M.travertinePave, L.plazaX1, L.x1, -0.4, S, -L.plazaZ, L.plazaZ);
+  B.span(M.porticoPave, L.plazaX1, L.x1, -0.4, S, -L.plazaZ, L.plazaZ);
   stairs(B, M.marble, { x: L.plazaX1 - 0.8, z: 0, dx: 1, dz: 0, width: L.plazaZ * 2, count: 2, rise: 0.3, run: 0.4, y0: 0 });
   for (const z of seZs.slice(1, -1)) columns.portico.push(place(L.seFrontX, S, z));
   for (const z of seZs.slice(1, -1)) columns.portico.push(place(L.seMidX, S, z));
@@ -215,13 +247,12 @@ function buildTabernae(B, M) {
     lowerOpenings.push({ x, y: 5.7, w: 3.0, h: 0.4, arch: true });
     upperOpenings.push({ x, y: 2.5, w: 1.9, h: 1.5, arch: true });
   }
-  B.add(wallGeometry(length, lower, 0.9, lowerOpenings), M.plasterCream, wallMatrix(L.x0, S, zFront - 0.9));
+  B.add(wallGeometry(length, lower, 0.9, lowerOpenings), M.tufa, wallMatrix(L.x0, S, zFront - 0.9));
+  B.add(wallGeometry(length, upper, 0.8, upperOpenings), M.brick, wallMatrix(L.x0, S + lower, zFront - 0.85));
   for (const bay of bays) {
-    const pier = (bay.width - 3.4) / 2;
-    B.span(M.plasterRed, bay.x0, bay.x0 + pier, S, S + 1.9, zFront - 0.02, zFront + 0.03);
-    B.span(M.plasterRed, bay.x0 + bay.width - pier, bay.x0 + bay.width, S, S + 1.9, zFront - 0.02, zFront + 0.03);
+    B.span(M.travertine, bay.center - 2.1, bay.center - 1.7, S, S + 4.8, zFront - 0.92, zFront + 0.04);
+    B.span(M.travertine, bay.center + 1.7, bay.center + 2.1, S, S + 4.8, zFront - 0.92, zFront + 0.04);
   }
-  B.add(wallGeometry(length, upper, 0.8, upperOpenings), M.plasterCream, wallMatrix(L.x0, S + lower, zFront - 0.85));
   for (const bay of bays) {
     B.span(M.travertine, bay.center - 2.0, bay.center + 2.0, S + 4.8, S + 5.4, zFront - 0.95, zFront + 0.06);
   }
@@ -238,7 +269,7 @@ function buildTabernae(B, M) {
   B.span(M.dirt, L.x0, L.x1, 0, S, zBack, zFront - 0.5);
   B.span(M.travertine, L.x0 - 0.2, L.x1 + 0.2, topY, topY + 0.45, zFront - 1.1, zFront + 0.25);
   const attic = zFront - 0.3 - (zBack - 0.6);
-  B.add(gablePrism(attic, 1.7, length + 2).rotateY(Math.PI / 2), M.plasterCream, new THREE.Matrix4().setPosition(0, topY + 0.3, (zBack - 0.6 + zFront - 0.3) / 2));
+  B.add(gablePrism(attic, 1.7, length + 2).rotateY(Math.PI / 2), M.brick, new THREE.Matrix4().setPosition(0, topY + 0.3, (zBack - 0.6 + zFront - 0.3) / 2));
   gableRoof(B, M.roofTile, { a0: L.x0 - 1, a1: L.x1 + 1, b0: zBack - 0.6, b1: zFront - 0.3, y: topY + 0.5, rise: 1.7, overhang: 0.45 });
 }
 
@@ -247,10 +278,12 @@ function buildEnclosure(B, M) {
   const S = L.stylobate;
   B.span(M.tufa, L.x0, L.x1 + 1.2, 0, 14.6, L.wallZ, L.wallZ + 1.2);
   B.span(M.plasterCream, L.x0, L.x1, S, 11, L.wallZ - 0.06, L.wallZ);
-  B.span(M.plasterRed, L.x0, L.x1, S, S + 1.9, L.wallZ - 0.09, L.wallZ);
+  B.span(M.marbleAshlar, L.x0, L.x1, S, S + 4.2, L.wallZ - 0.1, L.wallZ);
+  B.span(M.marble, L.x0, L.x1, S + 4.2, S + 4.5, L.wallZ - 0.16, L.wallZ);
   B.span(M.plasterCream, L.x1 - 0.06, L.x1, 6.9, 11, -L.wallZ, L.wallZ);
   B.span(M.plasterCream, L.x0, L.x0 + 0.06, S, 11, -L.wallZ, -L.plazaZ);
   B.span(M.plasterCream, L.x0, L.x0 + 0.06, S, 11, L.plazaZ, L.wallZ);
+  B.span(M.marbleAshlar, L.x0, L.x0 + 0.1, S, S + 4.2, L.plazaZ, L.wallZ);
   B.span(M.travertine, L.x0 - 0.2, L.x1 + 1.4, 14.6, 15.0, L.wallZ - 0.15, L.wallZ + 1.4);
   for (let i = 0; i < 20; i++) {
     const x = L.x0 + 4 + i * 8;
@@ -357,7 +390,7 @@ function buildForumOfAugustus(B, M, columns) {
   stairs(B, M.marble, { x: 5.4, z: 0, dx: -1, dz: 0, width: 17, count: 12, rise: 0.3, run: 0.45, y0: 0 });
   B.span(M.marbleAshlar, -28.6, -8.6, 3.6, 16.1, -7.6, 7.6);
   const sites = templeColumnSites();
-  for (const site of sites) columns.temple.push(B.transform.clone().multiply(place(site.x, 3.6, site.z)));
+  for (const site of sites) columns.contextTemple.push(B.transform.clone().multiply(place(site.x, 3.6, site.z)));
   entablature(B, M, { x0: -28.6, x1: -0.22, z0: -11.18, z1: 11.18, y: 16.1, E: 2.9, dentils: false });
   B.add(gablePrism(22.4, 4.5, 0.6).rotateY(Math.PI / 2), M.marble, new THREE.Matrix4().setPosition(-0.9, 19, 0));
   gableRoof(B, M.roofTile, { a0: -29.5, a1: 0.6, b0: -12.5, b1: 12.5, y: 19, rise: 5, overhang: 0.3 });
@@ -365,7 +398,7 @@ function buildForumOfAugustus(B, M, columns) {
   for (const s of [-1, 1]) {
     const x = -20 + s * 38;
     B.span(M.travertinePave, x - 7, x + 7, 0, 0.6, 44, 150);
-    for (let i = 0; i < 26; i++) columns.portico.push(place(x - s * 6, 0.6, 46 + i * 4));
+    for (let i = 0; i < 26; i++) columns.contextPortico.push(place(x - s * 6, 0.6, 46 + i * 4));
     B.span(M.marble, x - s * 6 - 0.5, x - s * 6 + 0.5, 8.8, 10.6, 44, 150);
     roofSlab(B, M.roofTile, { a0: 44, a1: 150, low: x - s * 7, high: x + s * 8, yLow: 10.6, yHigh: 14, axis: 'z' });
   }
@@ -387,38 +420,92 @@ function buildCity(B, M, rng) {
   blockBuilding(B, M, { x: 150, y: 0, z: -2, w: 30, d: 70, h: 16, wall: M.plasterCream, base: M.marbleAshlar });
 }
 
-export function buildAncient(M) {
-  const group = new THREE.Group();
-  const B = new Builder();
-  const rng = makeRng(42);
-  const columns = { portico: [], temple: [], small: [] };
-
-  B.span(M.cityGround, -2000, 2000, -1, -0.05, -2000, 2000);
-  for (const [x0, x1, z0, z1] of [[-2000, 2000, 815, 2000], [-2000, 2000, -2000, -815], [-2000, -815, -815, 815], [815, 2000, -815, 815]]) {
-    B.span(M.grass, x0, x1, -0.05, -0.02, z0, z1);
+function buildStatues(B, M) {
+  const L = LAYOUT;
+  const metals = [M.bronze, M.gilt, M.marble];
+  let i = 0;
+  for (let x = -34; x <= 62; x += 12) {
+    for (const s of [-1, 1]) {
+      statue(B, M, x, 0, s * (L.plazaZ - 2.4), s > 0 ? Math.PI / 2 : -Math.PI / 2, metals[i++ % metals.length]);
+    }
   }
-  buildPorticoes(B, M, columns);
-  buildTabernae(B, M);
-  buildEnclosure(B, M);
-  buildTemple(B, M, columns);
-  equestrianStatue(B, M, -8, 0);
-  buildCuria(B, M, { ruin: false });
-  buildCapitoline(B, M, rng, columns);
-  buildForumOfAugustus(B, M, columns);
-  buildCity(B, M, rng);
-  B.build(group);
+}
+
+function buildCrowd(B, M, rng) {
+  const L = LAYOUT;
+  const person = (x, y, z) => {
+    const cloth = M.cloth[Math.floor(rng() * M.cloth.length)];
+    robedFigure(B, cloth, M.skin, x, y, z, 1.6 + rng() * 0.22, rng() * Math.PI * 2);
+  };
+  for (let group = 0; group < 26; group++) {
+    const cx = -36 + rng() * 98;
+    const cz = -20 + rng() * 40;
+    if (Math.abs(cx + 8) < 5 && Math.abs(cz) < 4) continue;
+    const size = 1 + Math.floor(rng() * 5);
+    for (let k = 0; k < size; k++) person(cx + (rng() - 0.5) * 3, 0, cz + (rng() - 0.5) * 3);
+  }
+  for (let i = 0; i < 44; i++) {
+    const side = rng() < 0.5 ? -1 : 1;
+    person(-74 + rng() * 138, L.stylobate, side * (27 + rng() * 9));
+  }
+  for (let i = 0; i < 8; i++) person(L.templeX + 3 + rng() * 4.5, 3.6, -7 + rng() * 14);
+  for (let i = 0; i < 6; i++) person(L.templeX - 3 - rng() * 4, 5, -6 + rng() * 12);
+}
+
+// The forum itself goes into `core`, built with its own material set so that it can be
+// clipped and overlaid on today's scene. Everything around it goes into `context`.
+export function buildAncient(M, MC) {
+  const group = new THREE.Group();
+  const core = new THREE.Group();
+  const context = new THREE.Group();
+  const C = new Builder();
+  const X = new Builder();
+  const rng = makeRng(42);
+  const columns = { portico: [], temple: [], cella: [], contextPortico: [], contextTemple: [], small: [] };
+
+  X.span(M.cityGround, -2000, 2000, -1, -0.05, -2000, 2000);
+  for (const [x0, x1, z0, z1] of [[-2000, 2000, 815, 2000], [-2000, 2000, -2000, -815], [-2000, -815, -815, 815], [815, 2000, -815, 815]]) {
+    X.span(M.grass, x0, x1, -0.05, -0.02, z0, z1);
+  }
+  buildPorticoes(C, MC, columns);
+  buildTabernae(C, MC);
+  buildEnclosure(C, MC);
+  buildTemple(C, MC, columns);
+  equestrianStatue(C, MC, -8, 0);
+  buildStatues(C, MC);
+  buildCuria(X, M, { ruin: false });
+  buildCapitoline(X, M, rng, columns);
+  buildForumOfAugustus(X, M, columns);
+  buildCity(X, M, rng);
+  buildCrowd(X, M, rng);
+  C.build(core);
+  X.build(context);
 
   const L = LAYOUT;
-  const portico = columnParts(L.column.R, L.column.H, false, 1.5);
-  group.add(instanced(portico.shaft, M.granite, columns.portico));
-  group.add(instanced(portico.base, M.marble, columns.portico));
-  group.add(instanced(portico.capital, M.marbleDouble, columns.portico));
-  group.add(instanced(portico.shaft, M.marble, columns.small));
-  group.add(instanced(portico.base, M.marble, columns.small));
-  group.add(instanced(portico.capital, M.marbleDouble, columns.small));
+  // Portico shafts are smooth geometry with the fluting in the texture: three texture repeats
+  // around the shaft give 24 flutes without the cost of modelling them.
+  const portico = columnParts(L.column.R, L.column.H, false, (Math.PI * 2 * L.column.R) / 3);
+  const cella = columnParts(0.4, 9.4, false, 2);
   const temple = columnParts(L.temple.R, L.temple.H, true);
-  group.add(instanced(temple.shaft, M.marble, columns.temple));
-  group.add(instanced(temple.base, M.marble, columns.temple));
-  group.add(instanced(temple.capital, M.marbleDouble, columns.temple));
-  return group;
+  const columnSet = (target, parts, shaft, materials, matrices) => {
+    target.add(instanced(parts.shaft, shaft, matrices));
+    target.add(instanced(parts.base, materials.marble, matrices));
+    target.add(instanced(parts.capital, materials.marbleDouble, matrices));
+  };
+  columnSet(core, portico, MC.marbleFluted, MC, columns.portico);
+  columnSet(core, cella, MC.giallo, MC, columns.cella);
+  columnSet(core, temple, MC.marble, MC, columns.temple);
+  columnSet(context, portico, M.marbleFluted, M, columns.contextPortico);
+  columnSet(context, portico, M.marbleFluted, M, columns.small);
+  columnSet(context, temple, M.marble, M, columns.contextTemple);
+  group.add(context, core);
+  return {
+    group,
+    core,
+    context,
+    columnSets: [
+      { R: L.column.R, H: L.column.H, matrices: columns.portico },
+      { R: L.temple.R, H: L.temple.H, matrices: columns.temple },
+    ],
+  };
 }

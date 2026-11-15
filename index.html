@@ -15,6 +15,8 @@
   #title p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
   #views { top: 16px; right: 16px; padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100vw - 32px); }
   #bar { bottom: 20px; left: 50%; transform: translateX(-50%); padding: 6px; display: flex; gap: 6px; align-items: center; }
+  #rebuild { bottom: 78px; left: 50%; transform: translateX(-50%); padding: 6px; display: none; gap: 6px; align-items: center; }
+  #amount { width: 220px; accent-color: var(--accent); }
   button { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
   button:hover { background: rgba(255, 255, 255, 0.1); }
   button.active { background: var(--accent); color: #1c1608; font-weight: 600; }
@@ -51,9 +53,17 @@
 <div id="divider"></div>
 <div id="tag-ancient" class="side-tag">Ancient</div>
 <div id="tag-today" class="side-tag">Today</div>
-<div id="hint">Drag to orbit, right drag to pan, scroll to zoom. Space flips between eras.</div>
+<div id="hint">Drag to orbit, right drag to pan, scroll to zoom. Space steps through Today, Rebuild and Ancient Rome.</div>
+<div id="rebuild" class="panel">
+  <button id="style-ghost" class="active">Outline</button>
+  <button id="style-solid">Solid</button>
+  <div class="sep"></div>
+  <input id="amount" type="range" min="0" max="100" value="0" aria-label="How much of the forum is rebuilt">
+  <button id="replay">Replay</button>
+</div>
 <div id="bar" class="panel">
   <button id="btn-today" class="active">Today</button>
+  <button id="btn-rebuild" title="Keeps today's ruins and grows the ancient forum on top of them">Rebuild</button>
   <button id="btn-ancient">Ancient Rome</button>
   <div class="sep"></div>
   <button id="btn-compare">Compare</button>

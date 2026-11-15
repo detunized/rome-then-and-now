@@ -525,3 +525,31 @@ export function cityGrid(B, M, rng, { cell, extent, y, styles, floors, blocked, 
     }
   }
 }
+
+const ROBE = [[0, 0], [0.2, 0], [0.24, 0.12], [0.21, 0.6], [0.18, 1.0], [0.22, 1.2], [0.25, 1.36], [0.2, 1.44], [0.07, 1.49], [0.06, 1.56]];
+
+// Simple draped figure, used for statues and for people.
+export function robedFigure(B, body, head, x, y, z, height, rot = 0, raisedArm = false) {
+  const k = height / 1.78;
+  const profile = ROBE.map(([r, h]) => new THREE.Vector2(r * k, h * k));
+  B.add(new THREE.LatheGeometry(profile, 10).scale(1, 1, 0.6), body, place(x, y, z, rot), { keepUV: true });
+  B.add(new THREE.SphereGeometry(0.105 * k, 9, 7).scale(0.9, 1.1, 1), head, place(x, y + 1.66 * k, z), { keepUV: true });
+  for (const side of raisedArm ? [-1] : [-1, 1]) {
+    const arm = new THREE.CylinderGeometry(0.05 * k, 0.04 * k, 0.6 * k, 6).translate(side * 0.27 * k, 1.06 * k, 0);
+    B.add(arm, body, place(x, y, z, rot), { keepUV: true });
+  }
+  if (raisedArm) {
+    const arm = new THREE.CylinderGeometry(0.045 * k, 0.055 * k, 0.62 * k, 6)
+      .translate(0, 0.31 * k, 0)
+      .rotateZ(-1.0)
+      .translate(0.24 * k, 1.34 * k, 0);
+    B.add(arm, body, place(x, y, z, rot), { keepUV: true });
+  }
+}
+
+export function statue(B, M, x, y, z, rot, material, height = 2.4) {
+  B.box(M.marble, x, y, z, 1.3, 0.25, 1.3);
+  B.box(M.marbleAshlar, x, y + 0.25, z, 1.05, 1.1, 1.05);
+  B.box(M.marble, x, y + 1.35, z, 1.25, 0.2, 1.25);
+  robedFigure(B, material, material, x, y + 1.55, z, height, rot, true);
+}

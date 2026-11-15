@@ -10,6 +10,7 @@ import { createMaterials, noiseTexture } from './textures.js';
 import { createSky } from './sky.js';
 import { buildAncient } from './ancient.js';
 import { buildToday } from './today.js';
+import { buildGhost } from './ghost.js';
 
 const VIEWS = [
   { name: 'Overview', position: [30, 82, 132], target: [-8, 4, -12] },
@@ -19,16 +20,16 @@ const VIEWS = [
 ];
 
 const LABELS = [
-  { text: 'Temple of Venus Genetrix', at: [-62, 28, 0], era: 'ancient' },
-  { text: 'Double colonnade', at: [10, 14.5, -29], era: 'ancient' },
-  { text: 'Tabernae (shops and offices)', at: [-25, 21.5, -42], era: 'ancient' },
-  { text: 'Statue of Caesar', at: [-8, 8.5, 0], era: 'ancient' },
+  { text: 'Temple of Venus Genetrix', at: [-62, 28, 0], era: 'ancient', core: true },
+  { text: 'Double colonnade', at: [10, 14.5, -29], era: 'ancient', core: true },
+  { text: 'Tabernae (shops and offices)', at: [-25, 21.5, -42], era: 'ancient', core: true },
+  { text: 'Statue of Caesar', at: [-8, 8.5, 0], era: 'ancient', core: true },
   { text: 'Curia Julia', at: [94, 27, -28], era: 'both' },
   { text: 'Forum of Augustus', at: [-20, 30, 120], era: 'ancient' },
   { text: 'Capitoline Hill (Arx)', at: [-60, 52, -170], era: 'ancient' },
-  { text: 'Temple podium, three columns re-erected', at: [-62, 20, -11], era: 'today' },
-  { text: 'Standing portico columns', at: [0, 10.5, -26], era: 'today' },
-  { text: 'Tabernae ruins', at: [-20, 15, -41], era: 'today' },
+  { text: 'Temple podium, three columns re-erected', at: [-62, 20, -11], era: 'today', ruin: true },
+  { text: 'Standing portico columns', at: [0, 10.5, -26], era: 'today', ruin: true },
+  { text: 'Tabernae ruins', at: [-20, 15, -41], era: 'today', ruin: true },
   { text: 'Via dei Fori Imperiali', at: [-10, 12, 48], era: 'today' },
   { text: 'Santi Luca e Martina', at: [88, 44, -1], era: 'today' },
   { text: 'Vittoriano', at: [-185, 84, -100], era: 'today' },
@@ -41,6 +42,7 @@ renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFShadowMap;
 // Nothing moves, so the shadow map is only redrawn when the visible era changes.
 renderer.shadowMap.autoUpdate = false;
+renderer.localClippingEnabled = true;
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = 0.54;
 document.body.prepend(renderer.domElement);
@@ -174,6 +176,7 @@ function applyQuality(level) {
     }
   }
   shadowEra = null;
+  if (ghost) ghost.userData.line.linewidth = Math.max(1.3, 1.3 * renderer.getPixelRatio());
   detailShading = q.occlusion && composer !== null;
   sizeComposer();
   try {
@@ -229,11 +232,21 @@ backdrop.add(farHills(3200, 95, 240, 0xa0b0b6, 2.1));
 
 let ancient = null;
 let today = null;
+let ghost = null;
 let split = 0;
 let splitTarget = 0;
 let compare = false;
 let showLabels = true;
 let cameraTween = null;
+
+// Rebuild mode keeps today's scene and grows the ancient forum on top of it.
+// The clip plane hides everything above the current build height.
+const REBUILD_TOP = 29;
+const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+let rebuild = false;
+let rebuildStyle = 'ghost';
+let rebuildAmount = 0;
+let rebuildTarget = 0;
 
 const $ = (id) => document.getElementById(id);
 const labelNodes = LABELS.map((label) => {
@@ -244,10 +257,33 @@ const labelNodes = LABELS.map((label) => {
   return { ...label, node, point: new THREE.Vector3().fromArray(label.at) };
 });
 
-function setEra(target) {
+function currentMode() {
+  if (compare) return 'compare';
+  if (splitTarget === 1) return 'ancient';
+  return rebuild ? 'rebuild' : 'today';
+}
+
+function setMode(mode) {
   compare = false;
-  splitTarget = target;
+  if (mode === 'ancient') {
+    splitTarget = 1;
+    rebuild = false;
+    rebuildTarget = 0;
+  } else if (mode === 'rebuild') {
+    splitTarget = 0;
+    if (rebuild && rebuildAmount > 0.98) rebuildAmount = 0;
+    rebuild = true;
+    rebuildTarget = 1;
+  } else {
+    splitTarget = 0;
+    rebuild = false;
+    rebuildTarget = 0;
+  }
   syncUi();
+}
+
+function setEra(target) {
+  setMode(target === 1 ? 'ancient' : 'today');
 }
 
 function setCompare(on) {
@@ -257,14 +293,28 @@ function setCompare(on) {
   syncUi();
 }
 
+function setRebuildStyle(style) {
+  rebuildStyle = style;
+  syncUi();
+}
+
 function syncUi() {
-  $('btn-today').classList.toggle('active', !compare && splitTarget === 0);
-  $('btn-ancient').classList.toggle('active', !compare && splitTarget === 1);
+  const mode = currentMode();
+  $('btn-today').classList.toggle('active', mode === 'today');
+  $('btn-rebuild').classList.toggle('active', mode === 'rebuild');
+  $('btn-ancient').classList.toggle('active', mode === 'ancient');
   $('btn-compare').classList.toggle('active', compare);
   $('btn-labels').classList.toggle('active', showLabels);
-  $('era').textContent = compare
-    ? 'Ancient on the left, today on the right'
-    : splitTarget === 1 ? 'Rome, 2nd century AD, after Trajan\'s rebuild' : 'Rome, today';
+  $('style-ghost').classList.toggle('active', rebuildStyle === 'ghost');
+  $('style-solid').classList.toggle('active', rebuildStyle === 'solid');
+  $('rebuild').style.display = rebuild ? 'flex' : 'none';
+  $('hint').style.visibility = rebuild ? 'hidden' : 'visible';
+  $('era').textContent = {
+    compare: 'Ancient on the left, today on the right',
+    ancient: 'Rome, 2nd century AD, after Trajan\'s rebuild',
+    rebuild: 'Today, with the ancient forum rebuilt on top',
+    today: 'Rome, today',
+  }[mode];
 }
 
 function goToView(view) {
@@ -285,8 +335,18 @@ VIEWS.forEach((view, i) => {
   $('views').appendChild(button);
 });
 
-$('btn-today').addEventListener('click', () => setEra(0));
-$('btn-ancient').addEventListener('click', () => setEra(1));
+$('btn-today').addEventListener('click', () => setMode('today'));
+$('btn-rebuild').addEventListener('click', () => setMode('rebuild'));
+$('btn-ancient').addEventListener('click', () => setMode('ancient'));
+$('style-ghost').addEventListener('click', () => setRebuildStyle('ghost'));
+$('style-solid').addEventListener('click', () => setRebuildStyle('solid'));
+$('replay').addEventListener('click', () => {
+  rebuildAmount = 0;
+  rebuildTarget = 1;
+});
+$('amount').addEventListener('input', (event) => {
+  rebuildAmount = rebuildTarget = Number(event.target.value) / 100;
+});
 $('btn-compare').addEventListener('click', () => setCompare(!compare));
 $('btn-labels').addEventListener('click', () => {
   showLabels = !showLabels;
@@ -302,7 +362,7 @@ $('quality').addEventListener('change', (event) => {
 window.addEventListener('keydown', (event) => {
   if (event.code === 'Space') {
     event.preventDefault();
-    setEra(splitTarget >= 0.5 ? 0 : 1);
+    setMode({ today: 'rebuild', rebuild: 'ancient', ancient: 'today', compare: 'today' }[currentMode()]);
   } else if (event.key === 'c') setCompare(!compare);
   else if (event.key === 'l') {
     showLabels = !showLabels;
@@ -337,8 +397,11 @@ function updateLabels(width, height) {
     const x = (projected.x * 0.5 + 0.5) * width;
     const y = (-projected.y * 0.5 + 0.5) * height;
     const side = x < split * width ? 'ancient' : 'today';
-    const visible = showLabels && projected.z < 1 && projected.z > -1 && x > 0 && x < width && y > 60 && y < height - 70
-      && (label.era === 'both' || label.era === side);
+    const rebuilt = rebuildAmount > 0.5;
+    const matches = label.era === 'both'
+      || (side === 'ancient' && label.era === 'ancient')
+      || (side === 'today' && (rebuilt ? (label.core || (label.era === 'today' && !label.ruin)) : label.era === 'today'));
+    const visible = showLabels && projected.z < 1 && projected.z > -1 && x > 0 && x < width && y > 60 && y < height - 70 && matches;
     label.node.style.display = visible ? 'block' : 'none';
     if (visible) label.node.style.transform = `translate(-50%, -100%) translate(${x.toFixed(1)}px, ${(y - 14).toFixed(1)}px)`;
   }
@@ -369,6 +432,11 @@ function frame() {
   const rawDelta = clock.getDelta();
   const dt = Math.min(rawDelta, 0.05);
   watchFrameRate(rawDelta);
+  if (rebuildAmount !== rebuildTarget) {
+    const step = dt / 4;
+    rebuildAmount = Math.abs(rebuildTarget - rebuildAmount) <= step ? rebuildTarget : rebuildAmount + Math.sign(rebuildTarget - rebuildAmount) * step;
+  }
+  $('amount').value = Math.round(rebuildAmount * 100);
   if (!dragging && split !== splitTarget) {
     const step = dt * 1.6;
     split = Math.abs(splitTarget - split) <= step ? splitTarget : split + Math.sign(splitTarget - split) * step;
@@ -388,11 +456,21 @@ function frame() {
   const height = window.innerHeight;
   const edge = Math.round(width * split);
   const draw = (era) => {
-    if (era !== shadowEra) {
-      shadowEra = era;
+    const overlay = era === 'today' && rebuildAmount > 0.001;
+    const solid = overlay && rebuildStyle === 'solid';
+    const height = -0.5 + rebuildAmount * REBUILD_TOP;
+    today.visible = era === 'today';
+    ancient.context.visible = era === 'ancient';
+    ancient.core.visible = era === 'ancient' || solid;
+    ancient.group.visible = ancient.core.visible;
+    ghost.visible = overlay && !solid;
+    clipPlane.constant = era === 'ancient' ? 1e6 : height;
+    const shadowKey = solid ? `solid ${height.toFixed(2)}` : era;
+    if (shadowKey !== shadowEra) {
+      shadowEra = shadowKey;
       renderer.shadowMap.needsUpdate = true;
     }
-    if (composer && detailShading) {
+    if (composer && detailShading && !overlay) {
       composer.render();
       return;
     }
@@ -403,14 +481,10 @@ function frame() {
   };
   renderer.setScissorTest(true);
   if (edge > 0) {
-    ancient.visible = true;
-    today.visible = false;
     renderer.setScissor(0, 0, edge, height);
     draw('ancient');
   }
   if (edge < width) {
-    ancient.visible = false;
-    today.visible = true;
     renderer.setScissor(edge, 0, width - edge, height);
     draw('today');
   }
@@ -428,13 +502,24 @@ function frame() {
 
 function start() {
   const M = createMaterials();
-  ancient = buildAncient(M);
+  // The forum core gets its own materials so that only it is affected by the clip plane.
+  const MC = createMaterials();
+  for (const material of Object.values(MC)) {
+    if (!material.isMaterial) continue;
+    material.clippingPlanes = [clipPlane];
+    material.clipShadows = true;
+    material.polygonOffset = true;
+    material.polygonOffsetFactor = -1;
+    material.polygonOffsetUnits = -1;
+  }
+  ancient = buildAncient(M, MC);
   today = buildToday(M);
-  scene.add(ancient, today);
+  ghost = buildGhost(ancient.core, new Set([MC.interior, MC.dark, MC.dirt, MC.water, MC.timber]), ancient.columnSets, clipPlane);
+  scene.add(ancient.group, today, ghost);
   applyQuality(quality);
   syncUi();
   $('loading').classList.add('done');
-  window.app = { sky, scene, camera, controls, renderer, sun, composer, applyQuality, getQuality: () => ({ quality, resolutionScale, ratio: renderer.getPixelRatio() }), setEra, setCompare, goToView, VIEWS, setSplit: (v) => { split = splitTarget = v; } };
+  window.app = { sky, scene, camera, controls, renderer, sun, composer, applyQuality, getQuality: () => ({ quality, resolutionScale, ratio: renderer.getPixelRatio() }), setEra, setMode, setCompare, setRebuildStyle, setRebuild: (amount) => { rebuildAmount = rebuildTarget = amount; }, goToView, VIEWS, setSplit: (v) => { split = splitTarget = v; } };
   frame();
 }
 

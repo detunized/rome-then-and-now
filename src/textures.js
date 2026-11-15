@@ -293,6 +293,79 @@ export function noiseTexture() {
   return texture;
 }
 
+// Large stone slabs laid in courses, with slab lengths varying from course to course
+// so that the floor does not read as brickwork.
+function slabPaving({ seed, rows, slabs, base, variation = 0.05, streak = 0.05, pits = 0, joint = 0.02 }) {
+  const noise = makeNoise(seed);
+  const jitter = (i, row) => (hash2(((i % slabs) + slabs) % slabs, row, seed) - 0.5) * 0.6;
+  return (u, v, out) => {
+    const row = Math.floor(v * rows);
+    const fy = v * rows - row;
+    const s = u * slabs;
+    let i = Math.floor(s);
+    if (s < i + jitter(i, row)) i -= 1;
+    else if (s >= i + 1 + jitter(i + 1, row)) i += 1;
+    const left = i + jitter(i, row);
+    const right = i + 1 + jitter(i + 1, row);
+    const jx = joint * (slabs / rows);
+    const edge = Math.min((s - left) / jx, (right - s) / jx, fy / joint, (1 - fy) / joint);
+    const n = fbm(noise, u, v, 8, 4);
+    const lines = fbm(noise, u * 0.5, v * 6, 12, 3);
+    const fine = noise(u * 160, v * 160, 160);
+    const tone = 1 - variation + 2 * variation * hash2(((i % slabs) + slabs) % slabs, row, seed + 3);
+    let k = tone * (0.96 + 0.08 * n) - streak * Math.max(0, lines - 0.5) * 2;
+    if (pits && fine > 0.86) k -= pits;
+    const j = edge < 1 ? 0.78 + 0.22 * Math.max(0, edge) : 1;
+    out[0] = base[0] * k * j;
+    out[1] = base[1] * k * j;
+    out[2] = base[2] * k * j;
+    out[3] = (edge < 1 ? 0.35 + 0.65 * Math.max(0, edge) : 1) * 0.6 + n * 0.1;
+  };
+}
+
+// Marble relief band with garlands and small winged figures, as on the outer cella walls
+// of the Temple of Venus Genetrix. The band sits in the upper half of the tile.
+function garlandRelief(seed) {
+  const noise = makeNoise(seed);
+  return (u, v, out) => {
+    const t = (1 - v - 0.5) / 0.375;
+    const n = fbm(noise, u, v, 8, 4);
+    let h = 0;
+    if (t > 0 && t < 1) {
+      const x = u - Math.floor(u);
+      const swag = 0.72 - 0.34 * Math.sin(Math.PI * x);
+      const thickness = 0.1 + 0.05 * Math.sin(Math.PI * x);
+      h = Math.max(h, 1 - Math.abs(t - swag) / thickness);
+      const dx = Math.min(x, 1 - x);
+      h = Math.max(h, 1 - Math.hypot(dx / 0.05, (t - 0.42) / 0.3));
+      h = Math.max(h, 1 - Math.hypot(dx / 0.045, (t - 0.8) / 0.11));
+      h = Math.max(h, 1 - Math.hypot((dx - 0.1) / 0.075, (t - 0.6) / 0.1));
+      h = Math.max(h, t < 0.06 || t > 0.94 ? 0.8 : 0);
+      h = Math.min(1, Math.max(0, h * 1.6));
+    }
+    const inBand = t > 0 && t < 1;
+    const k = (0.95 + 0.08 * n) * (inBand ? 0.86 + 0.16 * h : 1);
+    out[0] = 226 * k;
+    out[1] = 220 * k;
+    out[2] = 206 * k;
+    out[3] = h * 0.9 + n * 0.05;
+  };
+}
+
+function flutes(seed) {
+  const noise = makeNoise(seed);
+  return (u, v, out) => {
+    const x = u * 8 - Math.floor(u * 8);
+    const d = Math.abs(x - 0.5) / 0.4;
+    const groove = d < 1 ? Math.sqrt(1 - d * d) : 0;
+    const k = (0.96 + 0.06 * fbm(noise, u, v, 6, 4)) * (1 - 0.1 * groove);
+    out[0] = 226 * k;
+    out[1] = 220 * k;
+    out[2] = 208 * k;
+    out[3] = 1 - groove;
+  };
+}
+
 function rubble(seed) {
   const noise = makeNoise(seed);
   return (u, v, out) => {
@@ -329,6 +402,11 @@ function rubble(seed) {
 const definitions = {
   marble: { tile: 4, size: 512, strength: 1.2, shade: stone({ seed: 1, base: [226, 220, 208], variation: 0.06, veins: 0.08 }) },
   marbleOld: { tile: 4, size: 512, strength: 3, shade: stone({ seed: 2, base: [204, 194, 176], variation: 0.14, stain: 0.6, speckle: 0.08, bump: 0.8 }) },
+  plazaPave: { tile: 12, size: 1024, strength: 2, shade: slabPaving({ seed: 41, rows: 10, slabs: 5, base: [222, 208, 180], variation: 0.06, streak: 0.07, pits: 0.1 }) },
+  porticoPave: { tile: 8, size: 512, strength: 1.5, shade: slabPaving({ seed: 42, rows: 8, slabs: 4, base: [230, 226, 218], variation: 0.035, streak: 0.03 }) },
+  garlandRelief: { tile: 4, size: 512, strength: 5, shade: garlandRelief(43) },
+  marbleFluted: { tile: 1, size: 256, strength: 6, shade: flutes(44) },
+  giallo: { tile: 2, size: 256, strength: 1, shade: stone({ seed: 45, base: [216, 168, 88], variation: 0.12, veins: 0.3, stain: 0.2 }) },
   facadeAncient: { tile: 12, size: 512, strength: 2, shade: facade(31, false) },
   facadeModern: { tile: 12, size: 512, strength: 2, shade: facade(32, true) },
   marbleAshlar: {
@@ -341,8 +419,8 @@ const definitions = {
   },
   travertine: { tile: 3, size: 512, strength: 2.5, shade: stone({ seed: 5, base: [214, 202, 180], variation: 0.1, stain: 0.25, speckle: 0.1, bump: 0.8 }) },
   tufa: {
-    tile: 2.4, size: 512, strength: 4,
-    shade: blocks({ seed: 6, cols: 2, rows: 4, joint: 0.028, base: [164, 146, 120], jointColor: [112, 98, 82], variation: 0.09, grain: 0.14, bump: 1 }),
+    tile: 3.2, size: 512, strength: 4,
+    shade: blocks({ seed: 6, cols: 2, rows: 4, joint: 0.02, base: [172, 154, 126], jointColor: [128, 112, 92], variation: 0.07, grain: 0.16, bump: 1, stagger: 0.37 }),
   },
   tufaOld: {
     tile: 2.4, size: 512, strength: 5,
@@ -450,6 +528,13 @@ export function createMaterials() {
       })),
     },
     granite: material('granite', { roughness: 0.45 }),
+    plazaPave: material('plazaPave', { roughness: 0.8 }),
+    porticoPave: material('porticoPave', { roughness: 0.45 }),
+    garlandRelief: material('garlandRelief', { roughness: 0.6 }),
+    marbleFluted: material('marbleFluted', { roughness: 0.5 }),
+    giallo: material('giallo', { roughness: 0.35 }),
+    skin: flat(0xc99a78, { roughness: 0.9 }),
+    cloth: [0xf1ece0, 0xf1ece0, 0xe9dfc8, 0xa8372f, 0x3f5f9a, 0xc9953f, 0x5f7f4f, 0x7a5a44].map((color) => flat(color, { roughness: 0.95 })),
     graniteOld: material('granite', { roughness: 0.8, color: 0xc4bdb2 }),
     rust: flat(0x5b3a2a, { roughness: 0.7, metalness: 0.5 }),
     bronze: flat(0x6b4a26, { roughness: 0.35, metalness: 0.9 }),
