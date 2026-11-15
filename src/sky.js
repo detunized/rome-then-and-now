@@ -38,6 +38,8 @@ const fragmentShader = /* glsl */ `
 
     float sun = max(dot(dir, sunDirection), 0.0);
     vec3 glow = vec3(1.0, 0.86, 0.64);
+    // Warm haze low in the sky on the side of the sun.
+    color = mix(color, vec3(1.25, 1.0, 0.72), pow(sun, 3.0) * (1.0 - smoothstep(0.0, 0.45, up)) * 0.55);
     color += glow * (0.3 * pow(sun, 10.0) + 1.1 * pow(sun, 260.0) * sunDisc);
     color += vec3(40.0, 36.0, 28.0) * smoothstep(0.99955, 0.9998, sun) * sunDisc;
 

@@ -421,7 +421,7 @@ function texture(name) {
 const tint = (r, g, b) => new THREE.Color().setRGB(r, g, b);
 
 export function material(name, options = {}) {
-  const { color = 0xffffff, roughness = 0.85, metalness = 0, normalScale = 1, side = THREE.FrontSide, weathering = 0.22, streaks = true } = options;
+  const { color = 0xffffff, roughness = 0.85, metalness = 0, normalScale = definitions[name].photo ? 1.7 : 1, side = THREE.FrontSide, weathering = 0.22, streaks = true } = options;
   const t = texture(name);
   const m = new THREE.MeshStandardMaterial({
     map: t.map,
@@ -458,7 +458,7 @@ export function createMaterials() {
     tufaOld: material('tufa', { roughness: 1, weathering: 0.5, color: tint(0.78, 0.74, 0.68) }),
     brick: material('brick', { roughness: 0.9 }),
     brickOld: material('brickOld', { roughness: 1, weathering: 0.5 }),
-    cobble: material('cobble', { roughness: 0.85, weathering: 0.35, streaks: false, color: tint(1.3, 1.28, 1.25) }),
+    cobble: material('cobble', { roughness: 0.85, weathering: 0.35, streaks: false, color: tint(1.85, 1.8, 1.72) }),
     basalt: material('basalt', { roughness: 0.8, streaks: false }),
     roofTile: material('roofTile', { roughness: 0.85 }),
     roofTileOld: material('roofTile', { roughness: 0.95, color: 0xc9b9a6 }),

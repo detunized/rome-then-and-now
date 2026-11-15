@@ -24,7 +24,7 @@ createViewer({
     { text: 'Temple of Venus and Roma', at: [-262, 44, 0], era: 'ancient', core: true },
   ],
   rebuildTop: 57,
-  sun: [-0.7, 0.55, -0.46],
+  sun: [-0.8, 0.52, -0.36],
   shadowExtent: [250, 215],
   remainsMatchCore: true,
   text: {

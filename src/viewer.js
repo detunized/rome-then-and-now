@@ -6,10 +6,39 @@ import { GTAOPass } from 'three/addons/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
 import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
 import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
 import { createMaterials, noiseTexture } from './textures.js';
 import { createSky } from './sky.js';
 import { buildGhost } from './ghost.js';
 
+
+// Final colour treatment, applied after tone mapping: a little more contrast and
+// saturation, warmer highlights against cooler shadows, and a soft vignette.
+const GradeShader = {
+  uniforms: { tDiffuse: { value: null }, contrast: { value: 1.1 }, saturation: { value: 1.1 }, vignette: { value: 0.3 } },
+  vertexShader: /* glsl */ `
+    varying vec2 vUv;
+    void main() {
+      vUv = uv;
+      gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    }`,
+  fragmentShader: /* glsl */ `
+    uniform sampler2D tDiffuse;
+    uniform float contrast;
+    uniform float saturation;
+    uniform float vignette;
+    varying vec2 vUv;
+    void main() {
+      vec4 texel = texture2D(tDiffuse, vUv);
+      vec3 color = texel.rgb;
+      float luma = dot(color, vec3(0.2126, 0.7152, 0.0722));
+      color = mix(vec3(luma), color, saturation);
+      color = (color - 0.5) * contrast + 0.5;
+      color += (luma - 0.5) * vec3(0.035, 0.005, -0.04);
+      color *= 1.0 - vignette * smoothstep(0.3, 0.95, length(vUv - 0.5) * 1.25);
+      gl_FragColor = vec4(clamp(color, 0.0, 1.0), texel.a);
+    }`,
+};
 
 // The viewer engine. A scene definition supplies the camera views, labels, texts and a
 // `build(sets)` function that returns the geometry for each layer:
@@ -28,7 +57,7 @@ export function createViewer(definition) {
   renderer.shadowMap.autoUpdate = false;
   renderer.localClippingEnabled = true;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 0.54;
+  renderer.toneMappingExposure = 0.6;
   document.body.prepend(renderer.domElement);
 
   const scene = new THREE.Scene();
@@ -48,7 +77,8 @@ export function createViewer(definition) {
   controls.maxDistance = 700;
   controls.update();
 
-  const sunDirection = new THREE.Vector3().fromArray(definition.sun ?? [0.6, 0.62, 0.5]).normalize();
+  // A low sun rakes across the stone and gives long shadows; the sky only fills them in a little.
+  const sunDirection = new THREE.Vector3().fromArray(definition.sun ?? [0.7, 0.5, 0.52]).normalize();
 
   const sky = createSky(noiseTexture(), sunDirection, scene.fog.color);
   const pmrem = new THREE.PMREMGenerator(renderer);
@@ -56,11 +86,11 @@ export function createViewer(definition) {
   skyScene.add(sky.mesh);
   sky.uniforms.sunDisc.value = 0;
   scene.environment = pmrem.fromScene(skyScene, 0, 1, 20000).texture;
-  scene.environmentIntensity = 0.8;
+  scene.environmentIntensity = 0.55;
   sky.uniforms.sunDisc.value = 1;
   backdrop.add(sky.mesh);
 
-  const sun = new THREE.DirectionalLight(0xffeed8, 3.0);
+  const sun = new THREE.DirectionalLight(0xffe6c8, 5.2);
   sun.position.copy(sunDirection).multiplyScalar(420).add(new THREE.Vector3(0, 0, -5));
   sun.target.position.set(0, 0, -5);
   sun.castShadow = true;
@@ -75,10 +105,11 @@ export function createViewer(definition) {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.06;
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0xeaeef4, 0xa39178, 0.55));
+  scene.add(new THREE.HemisphereLight(0xb8d0f4, 0xb89c78, 0.62));
 
   let composer = null;
   let occlusion = null;
+  let bloom = null;
   let antialias = null;
   let detailShading = false;
   let shadowEra = null;
@@ -104,10 +135,13 @@ export function createViewer(definition) {
     main.clearDepth = true;
     composer.addPass(main);
     occlusion = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
-    occlusion.updateGtaoMaterial({ radius: 1.6, distanceExponent: 1.4, thickness: 1.2, scale: 1.25, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
+    occlusion.updateGtaoMaterial({ radius: 3.2, distanceExponent: 1.2, thickness: 1.5, scale: 1.5, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
     occlusion.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, radiusExponent: 1.2, rings: 2, samples: 8 });
     composer.addPass(occlusion);
+    bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.7, 1.6);
+    composer.addPass(bloom);
     composer.addPass(new OutputPass());
+    composer.addPass(new ShaderPass(GradeShader));
     antialias = new ShaderPass(FXAAShader);
     composer.addPass(antialias);
     sizeComposer();
@@ -120,10 +154,10 @@ export function createViewer(definition) {
   // Graphics levels. `budget` caps the number of rendered pixels, which is what old GPUs run out of first.
   const QUALITY_ORDER = ['low', 'medium', 'high', 'max'];
   const QUALITY = {
-    low: { ratio: 1, budget: 1.2e6, shadow: 2048, soft: false, occlusion: false },
-    medium: { ratio: 1.5, budget: 3.5e6, shadow: 2048, soft: false, occlusion: false },
-    high: { ratio: 2, budget: 14e6, shadow: 4096, soft: true, occlusion: false },
-    max: { ratio: 2, budget: 14e6, shadow: 4096, soft: true, occlusion: true },
+    low: { ratio: 1, budget: 1.2e6, shadow: 2048, soft: false, post: false, bloom: false },
+    medium: { ratio: 1.5, budget: 3.5e6, shadow: 2048, soft: false, post: false, bloom: false },
+    high: { ratio: 2, budget: 14e6, shadow: 4096, soft: true, post: true, bloom: false },
+    max: { ratio: 2, budget: 14e6, shadow: 4096, soft: true, post: true, bloom: true },
   };
   const QUALITY_KEY = 'forum-of-caesar-quality';
   let quality = 'high';
@@ -162,7 +196,8 @@ export function createViewer(definition) {
     }
     shadowEra = null;
     if (ghost) ghost.userData.line.linewidth = Math.max(1.3, 1.3 * renderer.getPixelRatio());
-    detailShading = q.occlusion && composer !== null;
+    detailShading = q.post && composer !== null;
+    if (bloom) bloom.enabled = q.bloom;
     sizeComposer();
     try {
       localStorage.setItem(QUALITY_KEY, JSON.stringify({ level, scale: resolutionScale }));
