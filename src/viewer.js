@@ -356,11 +356,7 @@ export function createViewer(definition) {
     return compare ? 'compare' : MODES[Math.round(stageTarget)];
   }
 
-  let playing = false;
-  let hold = 0;
-
   function setMode(mode) {
-    playing = false;
     compare = false;
     stageTarget = MODES.indexOf(mode);
     syncUi();
@@ -371,7 +367,6 @@ export function createViewer(definition) {
   }
 
   function setCompare(on) {
-    playing = false;
     compare = on;
     if (on) split = 0.5;
     syncUi();
@@ -418,15 +413,6 @@ export function createViewer(definition) {
   });
   $('btn-surviving').addEventListener('click', () => {
     showSurviving = !showSurviving;
-    syncUi();
-  });
-  // Play runs the whole change from today, pausing for a moment on the outline.
-  $('replay').addEventListener('click', () => {
-    compare = false;
-    stage = 0;
-    stageTarget = 1;
-    playing = true;
-    hold = 0;
     syncUi();
   });
   $('btn-compare').addEventListener('click', () => setCompare(!compare));
@@ -569,15 +555,6 @@ export function createViewer(definition) {
     if (stage !== stageTarget) {
       const step = dt / STAGE_SECONDS;
       stage = Math.abs(stageTarget - stage) <= step ? stageTarget : stage + Math.sign(stageTarget - stage) * step;
-    }
-    if (playing && stage === stageTarget) {
-      hold += dt;
-      if (stageTarget >= 2) playing = false;
-      else if (hold > 0.9) {
-        stageTarget = 2;
-        hold = 0;
-        syncUi();
-      }
     }
     $('track-1').style.width = `${Math.min(1, Math.max(0, stage)) * 100}%`;
     $('track-2').style.width = `${Math.min(1, Math.max(0, stage - 1)) * 100}%`;

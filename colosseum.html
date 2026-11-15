@@ -24,7 +24,6 @@
   .stop.active b { border-color: #1c1608; color: #1c1608; }
   .track { width: 56px; height: 3px; border-radius: 2px; background: rgba(255, 255, 255, 0.18); overflow: hidden; margin: 0 3px; }
   .track i { display: block; height: 100%; width: 0; background: var(--accent); }
-  #replay { color: var(--muted); margin-right: 8px; }
   button { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
   button:hover { background: rgba(255, 255, 255, 0.1); }
   button.active { background: var(--accent); color: #1c1608; font-weight: 600; }
@@ -40,7 +39,7 @@
   .label::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 14px; background: rgba(255, 255, 255, 0.7); }
   #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0f12; font-size: 16px; color: var(--muted); transition: opacity 0.6s; z-index: 10; }
   #loading.done { opacity: 0; pointer-events: none; }
-  @media (max-width: 720px) { #title { max-width: 60vw; } #hint { display: none; } .stop { padding: 8px 9px; gap: 5px; } .track { width: 18px; } #replay { margin-right: 2px; padding: 8px; } #bar { flex-wrap: wrap; justify-content: center; width: calc(100vw - 24px); bottom: 78px; } }
+  @media (max-width: 720px) { #title { max-width: 60vw; } #hint { display: none; } .stop { padding: 8px 9px; gap: 5px; } .track { width: 18px; } #bar { flex-wrap: wrap; justify-content: center; width: calc(100vw - 24px); bottom: 78px; } }
 </style>
 <script type="importmap">
 {
@@ -78,10 +77,9 @@
   </label>
 </div>
 <div id="timeline" class="panel">
-  <button id="replay" title="Play the whole change, from today to ancient Rome">&#9654; Play</button>
   <button id="btn-today" class="stop active"><b>1</b>Today</button>
   <div class="track"><i id="track-1"></i></div>
-  <button id="btn-rebuild" class="stop" title="Today's ruins stay, and the missing parts are drawn in on top of them"><b>2</b>Rebuild</button>
+  <button id="btn-rebuild" class="stop" title="Today's ruins stay, and the missing parts are drawn in on top of them"><b>2</b>Blueprint</button>
   <div class="track"><i id="track-2"></i></div>
   <button id="btn-ancient" class="stop" title="The monument as it stood in antiquity"><b>3</b>Ancient Rome</button>
 </div>
