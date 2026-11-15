@@ -15,6 +15,17 @@ function columnProxy(R, H) {
   return mergeGeometries(parts.map((g) => g.toNonIndexed()));
 }
 
+// Drops edges shorter than `minimum` metres. Small ornaments such as dentils would
+// otherwise make up most of the lines and turn into noise at a distance.
+function longEdges(positions, minimum) {
+  const kept = [];
+  for (let i = 0; i < positions.length; i += 6) {
+    const length = Math.hypot(positions[i + 3] - positions[i], positions[i + 4] - positions[i + 1], positions[i + 5] - positions[i + 2]);
+    if (length >= minimum) kept.push(positions[i], positions[i + 1], positions[i + 2], positions[i + 3], positions[i + 4], positions[i + 5]);
+  }
+  return kept;
+}
+
 // Outline version of the ancient forum: a faint tinted surface plus edge lines.
 // A depth-only pass runs first so that only the nearest surface is tinted, and the
 // polygon offsets make it lose against today's ruins wherever the two coincide.
@@ -43,7 +54,7 @@ export function buildGhost(core, skipMaterials, columnSets, plane) {
     if (mesh.isInstancedMesh || skipMaterials.has(mesh.material)) continue;
     addSurface(new THREE.Mesh(mesh.geometry, depth), 10);
     addSurface(new THREE.Mesh(mesh.geometry, fill), 11);
-    addSurface(outline(new THREE.EdgesGeometry(mesh.geometry, 28).attributes.position.array), 12);
+    addSurface(outline(longEdges(new THREE.EdgesGeometry(mesh.geometry, 28).attributes.position.array, 0.3)), 12);
   }
 
   for (const { R, H, matrices } of columnSets) {

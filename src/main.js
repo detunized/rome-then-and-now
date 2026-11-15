@@ -233,20 +233,23 @@ backdrop.add(farHills(3200, 95, 240, 0xa0b0b6, 2.1));
 let ancient = null;
 let today = null;
 let ghost = null;
-let split = 0;
-let splitTarget = 0;
+let layers = null;
 let compare = false;
+let split = 0.5;
 let showLabels = true;
 let cameraTween = null;
 
-// Rebuild mode keeps today's scene and grows the ancient forum on top of it.
-// The clip plane hides everything above the current build height.
+// One timeline runs from today (0) through the outline rebuild (1) to ancient Rome (2).
+// From 0 to 1 the modern city dissolves and the forum grows as a blue outline.
+// From 1 to 2 the outline fills in solid while the ancient city appears around it.
+const MODES = ['today', 'rebuild', 'ancient'];
 const REBUILD_TOP = 29;
-const clipPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
-let rebuild = false;
-let rebuildStyle = 'ghost';
-let rebuildAmount = 0;
-let rebuildTarget = 0;
+const STAGE_SECONDS = 4;
+const ghostPlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+const corePlane = new THREE.Plane(new THREE.Vector3(0, -1, 0), 1e6);
+let stage = 0;
+let stageTarget = 0;
+let fadeModern = true;
 
 const $ = (id) => document.getElementById(id);
 const labelNodes = LABELS.map((label) => {
@@ -257,28 +260,91 @@ const labelNodes = LABELS.map((label) => {
   return { ...label, node, point: new THREE.Vector3().fromArray(label.at) };
 });
 
+const smooth = (x) => {
+  const t = Math.min(1, Math.max(0, x));
+  return t * t * (3 - 2 * t);
+};
+
+function materialsOf(set) {
+  const list = [];
+  const visit = (value) => {
+    if (!value || typeof value !== 'object') return;
+    if (value.isMaterial) list.push(value);
+    else Object.values(value).forEach(visit);
+  };
+  visit(set);
+  return list;
+}
+
+// Dissolves a whole layer with dithering, which needs no sorting and keeps depth correct.
+function setOpacity(materials, opacity) {
+  const dissolve = opacity < 0.999;
+  for (const material of materials) {
+    if (material.alphaHash !== dissolve) {
+      material.alphaHash = dissolve;
+      material.needsUpdate = true;
+    }
+    material.opacity = dissolve ? opacity : 1;
+  }
+}
+
+function setShadows(group, on) {
+  if (group.userData.shadows === on) return;
+  group.userData.shadows = on;
+  group.traverse((object) => {
+    if (object.isMesh) object.castShadow = on;
+  });
+}
+
+function timelineState(s) {
+  const outline = Math.min(1, s);
+  const solid = Math.max(0, s - 1);
+  const faded = fadeModern ? 1 - 0.74 * smooth(outline * 3) : 1;
+  return {
+    today: s < 2,
+    modern: faded * (1 - smooth(solid * 1.6)),
+    remains: 1 - smooth((solid - 0.45) / 0.55),
+    ghost: s > 0.001 && s < 2 ? -0.5 + outline * REBUILD_TOP : null,
+    core: s > 1 ? (s >= 2 ? 1e6 : -0.5 + solid * REBUILD_TOP) : null,
+    context: smooth(solid * 1.3),
+    key: `${s.toFixed(3)} ${fadeModern}`,
+  };
+}
+
+function applyState(state) {
+  today.group.visible = state.today;
+  if (state.today) {
+    today.modern.visible = state.modern > 0.01;
+    today.remains.visible = state.remains > 0.01;
+    today.earth.visible = today.remains.visible && state.modern < 0.999;
+    setOpacity(layers.modern, state.modern);
+    setOpacity(layers.remains, state.remains);
+    setShadows(today.modern, state.modern > 0.5);
+    setShadows(today.remains, state.remains > 0.5);
+  }
+  ghost.visible = state.ghost !== null;
+  if (ghost.visible) ghostPlane.constant = state.ghost;
+  ancient.core.visible = state.core !== null;
+  if (ancient.core.visible) corePlane.constant = state.core;
+  ancient.context.visible = state.context > 0.01;
+  if (ancient.context.visible) {
+    setOpacity(layers.context, state.context);
+    setShadows(ancient.context, state.context > 0.5);
+  }
+  ancient.group.visible = ancient.core.visible || ancient.context.visible;
+  if (state.key !== shadowEra) {
+    shadowEra = state.key;
+    renderer.shadowMap.needsUpdate = true;
+  }
+}
+
 function currentMode() {
-  if (compare) return 'compare';
-  if (splitTarget === 1) return 'ancient';
-  return rebuild ? 'rebuild' : 'today';
+  return compare ? 'compare' : MODES[Math.round(stageTarget)];
 }
 
 function setMode(mode) {
   compare = false;
-  if (mode === 'ancient') {
-    splitTarget = 1;
-    rebuild = false;
-    rebuildTarget = 0;
-  } else if (mode === 'rebuild') {
-    splitTarget = 0;
-    if (rebuild && rebuildAmount > 0.98) rebuildAmount = 0;
-    rebuild = true;
-    rebuildTarget = 1;
-  } else {
-    splitTarget = 0;
-    rebuild = false;
-    rebuildTarget = 0;
-  }
+  stageTarget = MODES.indexOf(mode);
   syncUi();
 }
 
@@ -288,13 +354,7 @@ function setEra(target) {
 
 function setCompare(on) {
   compare = on;
-  if (on) splitTarget = 0.5;
-  else splitTarget = split >= 0.5 ? 1 : 0;
-  syncUi();
-}
-
-function setRebuildStyle(style) {
-  rebuildStyle = style;
+  if (on) split = 0.5;
   syncUi();
 }
 
@@ -305,14 +365,12 @@ function syncUi() {
   $('btn-ancient').classList.toggle('active', mode === 'ancient');
   $('btn-compare').classList.toggle('active', compare);
   $('btn-labels').classList.toggle('active', showLabels);
-  $('style-ghost').classList.toggle('active', rebuildStyle === 'ghost');
-  $('style-solid').classList.toggle('active', rebuildStyle === 'solid');
-  $('rebuild').style.display = rebuild ? 'flex' : 'none';
-  $('hint').style.visibility = rebuild ? 'hidden' : 'visible';
+  $('btn-fade').classList.toggle('active', fadeModern);
+  $('timeline').style.visibility = compare ? 'hidden' : 'visible';
   $('era').textContent = {
     compare: 'Ancient on the left, today on the right',
     ancient: 'Rome, 2nd century AD, after Trajan\'s rebuild',
-    rebuild: 'Today, with the ancient forum rebuilt on top',
+    rebuild: 'Today\'s ruins with the ancient forum drawn on top',
     today: 'Rome, today',
   }[mode];
 }
@@ -338,14 +396,19 @@ VIEWS.forEach((view, i) => {
 $('btn-today').addEventListener('click', () => setMode('today'));
 $('btn-rebuild').addEventListener('click', () => setMode('rebuild'));
 $('btn-ancient').addEventListener('click', () => setMode('ancient'));
-$('style-ghost').addEventListener('click', () => setRebuildStyle('ghost'));
-$('style-solid').addEventListener('click', () => setRebuildStyle('solid'));
+$('btn-fade').addEventListener('click', () => {
+  fadeModern = !fadeModern;
+  syncUi();
+});
 $('replay').addEventListener('click', () => {
-  rebuildAmount = 0;
-  rebuildTarget = 1;
+  compare = false;
+  if (stageTarget < 0.5) stageTarget = 2;
+  stage = 0;
+  syncUi();
 });
 $('amount').addEventListener('input', (event) => {
-  rebuildAmount = rebuildTarget = Number(event.target.value) / 100;
+  stage = stageTarget = Number(event.target.value) / 100;
+  syncUi();
 });
 $('btn-compare').addEventListener('click', () => setCompare(!compare));
 $('btn-labels').addEventListener('click', () => {
@@ -378,7 +441,7 @@ divider.addEventListener('pointerdown', (event) => {
 });
 divider.addEventListener('pointermove', (event) => {
   if (!dragging) return;
-  split = splitTarget = Math.max(0.02, Math.min(0.98, event.clientX / window.innerWidth));
+  split = Math.max(0.02, Math.min(0.98, event.clientX / window.innerWidth));
 });
 divider.addEventListener('pointerup', () => {
   dragging = false;
@@ -396,12 +459,12 @@ function updateLabels(width, height) {
     projected.copy(label.point).project(camera);
     const x = (projected.x * 0.5 + 0.5) * width;
     const y = (-projected.y * 0.5 + 0.5) * height;
-    const side = x < split * width ? 'ancient' : 'today';
-    const rebuilt = rebuildAmount > 0.5;
+    let era = stage >= 1.5 ? 'ancient' : stage >= 0.5 ? 'rebuild' : 'today';
+    if (compare) era = x < split * width ? 'ancient' : 'today';
     const matches = label.era === 'both'
-      || (side === 'ancient' && label.era === 'ancient')
-      || (side === 'today' && (rebuilt ? (label.core || (label.era === 'today' && !label.ruin)) : label.era === 'today'));
-    const visible = showLabels && projected.z < 1 && projected.z > -1 && x > 0 && x < width && y > 60 && y < height - 70 && matches;
+      || (era === label.era)
+      || (era === 'rebuild' && (label.core || (label.era === 'today' && !label.ruin)));
+    const visible = showLabels && projected.z < 1 && projected.z > -1 && x > 0 && x < width && y > 60 && y < height - 110 && matches;
     label.node.style.display = visible ? 'block' : 'none';
     if (visible) label.node.style.transform = `translate(-50%, -100%) translate(${x.toFixed(1)}px, ${(y - 14).toFixed(1)}px)`;
   }
@@ -413,7 +476,7 @@ let warmup = 60;
 let sampled = 0;
 let slow = 0;
 function watchFrameRate(delta) {
-  if (!autoQuality || document.hidden || delta > 1 || (split > 0 && split < 1)) return;
+  if (!autoQuality || document.hidden || delta > 1 || compare || stage !== stageTarget) return;
   if (warmup > 0) {
     warmup--;
     return;
@@ -428,19 +491,27 @@ function watchFrameRate(delta) {
   sampled = slow = 0;
 }
 
+function render(state, plain) {
+  applyState(state);
+  if (composer && detailShading && plain) {
+    composer.render();
+    return;
+  }
+  renderer.clear();
+  renderer.render(backdrop, camera);
+  renderer.clearDepth();
+  renderer.render(scene, camera);
+}
+
 function frame() {
   const rawDelta = clock.getDelta();
   const dt = Math.min(rawDelta, 0.05);
   watchFrameRate(rawDelta);
-  if (rebuildAmount !== rebuildTarget) {
-    const step = dt / 4;
-    rebuildAmount = Math.abs(rebuildTarget - rebuildAmount) <= step ? rebuildTarget : rebuildAmount + Math.sign(rebuildTarget - rebuildAmount) * step;
+  if (stage !== stageTarget) {
+    const step = dt / STAGE_SECONDS;
+    stage = Math.abs(stageTarget - stage) <= step ? stageTarget : stage + Math.sign(stageTarget - stage) * step;
   }
-  $('amount').value = Math.round(rebuildAmount * 100);
-  if (!dragging && split !== splitTarget) {
-    const step = dt * 1.6;
-    split = Math.abs(splitTarget - split) <= step ? splitTarget : split + Math.sign(splitTarget - split) * step;
-  }
+  $('amount').value = Math.round(stage * 100);
   if (cameraTween) {
     cameraTween.t = Math.min(1, cameraTween.t + dt / 1.6);
     const k = cameraTween.t * cameraTween.t * (3 - 2 * cameraTween.t);
@@ -455,45 +526,21 @@ function frame() {
   const width = window.innerWidth;
   const height = window.innerHeight;
   const edge = Math.round(width * split);
-  const draw = (era) => {
-    const overlay = era === 'today' && rebuildAmount > 0.001;
-    const solid = overlay && rebuildStyle === 'solid';
-    const height = -0.5 + rebuildAmount * REBUILD_TOP;
-    today.visible = era === 'today';
-    ancient.context.visible = era === 'ancient';
-    ancient.core.visible = era === 'ancient' || solid;
-    ancient.group.visible = ancient.core.visible;
-    ghost.visible = overlay && !solid;
-    clipPlane.constant = era === 'ancient' ? 1e6 : height;
-    const shadowKey = solid ? `solid ${height.toFixed(2)}` : era;
-    if (shadowKey !== shadowEra) {
-      shadowEra = shadowKey;
-      renderer.shadowMap.needsUpdate = true;
-    }
-    if (composer && detailShading && !overlay) {
-      composer.render();
-      return;
-    }
-    renderer.clear();
-    renderer.render(backdrop, camera);
-    renderer.clearDepth();
-    renderer.render(scene, camera);
-  };
   renderer.setScissorTest(true);
-  if (edge > 0) {
+  if (compare) {
     renderer.setScissor(0, 0, edge, height);
-    draw('ancient');
-  }
-  if (edge < width) {
+    render(timelineState(2), true);
     renderer.setScissor(edge, 0, width - edge, height);
-    draw('today');
+    render(timelineState(0), true);
+  } else {
+    renderer.setScissor(0, 0, width, height);
+    render(timelineState(stage), stage === 0 || stage === 2);
   }
 
-  const showDivider = edge > 0 && edge < width;
-  divider.style.display = showDivider ? 'block' : 'none';
+  divider.style.display = compare ? 'block' : 'none';
   divider.style.left = `${edge}px`;
   for (const [id, x] of [['tag-ancient', edge - 86], ['tag-today', edge + 22]]) {
-    $(id).style.display = showDivider && compare ? 'block' : 'none';
+    $(id).style.display = compare ? 'block' : 'none';
     $(id).style.left = `${x}px`;
   }
   updateLabels(width, height);
@@ -501,25 +548,36 @@ function frame() {
 }
 
 function start() {
-  const M = createMaterials();
-  // The forum core gets its own materials so that only it is affected by the clip plane.
-  const MC = createMaterials();
-  for (const material of Object.values(MC)) {
-    if (!material.isMaterial) continue;
-    material.clippingPlanes = [clipPlane];
+  // Four material sets over the same textures, one per layer, so that each layer
+  // can be dissolved or clipped without touching the others.
+  const remainsMaterials = createMaterials();
+  const modernMaterials = createMaterials();
+  const contextMaterials = createMaterials();
+  const coreMaterials = createMaterials();
+  for (const material of materialsOf(coreMaterials)) {
+    material.clippingPlanes = [corePlane];
     material.clipShadows = true;
     material.polygonOffset = true;
     material.polygonOffsetFactor = -1;
     material.polygonOffsetUnits = -1;
   }
-  ancient = buildAncient(M, MC);
-  today = buildToday(M);
-  ghost = buildGhost(ancient.core, new Set([MC.interior, MC.dark, MC.dirt, MC.water, MC.timber]), ancient.columnSets, clipPlane);
-  scene.add(ancient.group, today, ghost);
+  ancient = buildAncient(contextMaterials, coreMaterials);
+  today = buildToday(remainsMaterials, modernMaterials);
+  const hidden = ['interior', 'dark', 'dirt', 'water', 'timber'].map((name) => coreMaterials[name]);
+  ghost = buildGhost(ancient.core, new Set(hidden), ancient.columnSets, ghostPlane);
+  layers = { remains: materialsOf(remainsMaterials), modern: materialsOf(modernMaterials), context: materialsOf(contextMaterials) };
+  scene.add(ancient.group, today.group, ghost);
   applyQuality(quality);
   syncUi();
   $('loading').classList.add('done');
-  window.app = { sky, scene, camera, controls, renderer, sun, composer, applyQuality, getQuality: () => ({ quality, resolutionScale, ratio: renderer.getPixelRatio() }), setEra, setMode, setCompare, setRebuildStyle, setRebuild: (amount) => { rebuildAmount = rebuildTarget = amount; }, goToView, VIEWS, setSplit: (v) => { split = splitTarget = v; } };
+  window.app = {
+    sky, scene, camera, controls, renderer, sun, composer, applyQuality, setEra, setMode, setCompare, goToView, VIEWS,
+    getQuality: () => ({ quality, resolutionScale, ratio: renderer.getPixelRatio() }),
+    setStage: (value) => {
+      stage = stageTarget = value;
+      syncUi();
+    },
+  };
   frame();
 }
 

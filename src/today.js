@@ -24,24 +24,24 @@ function alongRoad(t, offset) {
   return [ROAD.cx + ROAD.dx * t + ROAD.nx * offset, ROAD.cz + ROAD.dz * t + ROAD.nz * offset];
 }
 
-function buildGround(B, M) {
-  const R = 2000;
+function buildGround(R, M, N, MM) {
+  const far = 2000;
   const shape = new THREE.Shape();
-  shape.moveTo(-R, -R);
-  shape.lineTo(R, -R);
-  shape.lineTo(R, R);
-  shape.lineTo(-R, R);
+  shape.moveTo(-far, -far);
+  shape.lineTo(far, -far);
+  shape.lineTo(far, far);
+  shape.lineTo(-far, far);
   shape.closePath();
   const hole = new THREE.Path();
   PIT.forEach(([x, z], i) => (i ? hole.lineTo(x, -z) : hole.moveTo(x, -z)));
   hole.closePath();
   shape.holes.push(hole);
-  B.add(new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2), M.cobble, new THREE.Matrix4().setPosition(0, STREET, 0));
+  N.add(new THREE.ShapeGeometry(shape).rotateX(-Math.PI / 2), MM.cobble, new THREE.Matrix4().setPosition(0, STREET, 0));
+  countryside(N, MM, STREET + 0.02);
 
-  B.span(M.grass, -84, 125, -1, 0, -47, 31);
-  countryside(B, M, STREET + 0.02);
-  B.span(M.dirt, -84, 70, 0, 0.05, -47, -37.2);
-  B.span(M.dirt, 70, 125, 0, 0.04, -47, -17);
+  R.span(M.grass, -84, 125, -1, 0, -47, 31);
+  R.span(M.dirt, -84, 70, 0, 0.05, -47, -37.2);
+  R.span(M.dirt, 70, 125, 0, 0.04, -47, -17);
 
   for (let i = 1; i < PIT.length; i++) {
     const [ax, az] = PIT[i];
@@ -52,8 +52,8 @@ function buildGround(B, M) {
     const rot = Math.atan2(-dz, dx);
     const cx = (ax + bx) / 2 + dz * 0.4;
     const cz = (az + bz) / 2 - dx * 0.4;
-    B.box(M.brick, cx, -0.5, cz, length + 0.8, STREET + 1.4, 0.8, rot);
-    B.box(M.travertine, cx, STREET + 0.9, cz, length + 1, 0.16, 1.0, rot);
+    N.box(MM.brick, cx, -0.5, cz, length + 0.8, STREET + 1.4, 0.8, rot);
+    N.box(MM.travertine, cx, STREET + 0.9, cz, length + 1, 0.16, 1.0, rot);
   }
 }
 
@@ -110,7 +110,7 @@ function buildRoad(B, M, rng) {
   }
 }
 
-function buildHill(B, M, rng) {
+function buildHill(B, M, N, MM, rng) {
   B.span(M.tufaOld, -150, 140, 0, CLIVUS - 0.2, -60, -47);
   B.span(M.basalt, -150, 140, CLIVUS - 0.2, CLIVUS, -54, -47.5);
   B.span(M.brickOld, -150, 140, CLIVUS - 0.2, CLIVUS + 1, -47.5, -47);
@@ -128,8 +128,8 @@ function buildHill(B, M, rng) {
     const z = -57 - rng() * 30;
     if (x > -76 && x < 6 && z < -58) continue;
     const y = CLIVUS + ((-54 - z) / 36.5) * (PLATEAU - CLIVUS);
-    if (rng() < 0.55) stonePine(B, M, x, y, z, 11 + rng() * 6, rng);
-    else cypress(B, M, x, y, z, 8 + rng() * 5, rng);
+    if (rng() < 0.55) stonePine(N, MM, x, y, z, 11 + rng() * 6, rng);
+    else cypress(N, MM, x, y, z, 8 + rng() * 5, rng);
   }
 
   // Brick palazzo with arcaded windows that sits above the tabernae.
@@ -141,20 +141,20 @@ function buildHill(B, M, rng) {
     openings.push({ x, y: 3.2, w: 2.2, h: 2.4, arch: true });
     openings.push({ x, y: 10.4, w: 2.6, h: 3.0, arch: true });
   }
-  B.add(wallGeometry(length, 18, 0.6, openings), M.brick, wallMatrix(x0, CLIVUS, -60.6));
-  B.span(M.dark, x0 + 0.2, x0 + length - 0.2, CLIVUS, CLIVUS + 17.5, -60.9, -60.62);
-  B.span(M.brick, x0, x0 + length, CLIVUS, CLIVUS + 18, -80, -60.9);
-  B.span(M.travertine, x0 - 0.3, x0 + length + 0.3, CLIVUS + 18, CLIVUS + 18.6, -80.3, -59.7);
-  B.span(M.travertine, x0 - 0.1, x0 + length + 0.1, CLIVUS + 8.6, CLIVUS + 9, -60.7, -59.85);
-  gableRoof(B, M.roofTile, { a0: x0, a1: x0 + length, b0: -80, b1: -60, y: CLIVUS + 18.6, rise: 2.4, overhang: 0.5 });
+  N.add(wallGeometry(length, 18, 0.6, openings), MM.brick, wallMatrix(x0, CLIVUS, -60.6));
+  N.span(MM.dark, x0 + 0.2, x0 + length - 0.2, CLIVUS, CLIVUS + 17.5, -60.9, -60.62);
+  N.span(MM.brick, x0, x0 + length, CLIVUS, CLIVUS + 18, -80, -60.9);
+  N.span(MM.travertine, x0 - 0.3, x0 + length + 0.3, CLIVUS + 18, CLIVUS + 18.6, -80.3, -59.7);
+  N.span(MM.travertine, x0 - 0.1, x0 + length + 0.1, CLIVUS + 8.6, CLIVUS + 9, -60.7, -59.85);
+  gableRoof(N, MM.roofTile, { a0: x0, a1: x0 + length, b0: -80, b1: -60, y: CLIVUS + 18.6, rise: 2.4, overhang: 0.5 });
 
-  const styles = M.facades.modern;
-  cityBlock(B, M, { x: 60, y: PLATEAU, z: -114, bays: 15, depthBays: 9, floors: 5, style: styles[0] });
-  cityBlock(B, M, { x: 114, y: PLATEAU, z: -120, bays: 10, depthBays: 11, floors: 4, style: styles[1] });
-  cityBlock(B, M, { x: -30, y: PLATEAU, z: -132, bays: 23, depthBays: 10, floors: 5, style: styles[2] });
-  cityBlock(B, M, { x: 20, y: PLATEAU, z: -200, bays: 30, depthBays: 14, floors: 6, style: styles[4] });
-  cityBlock(B, M, { x: -90, y: PLATEAU, z: -230, bays: 20, depthBays: 12, floors: 5, style: styles[3] });
-  for (let i = 0; i < 9; i++) stonePine(B, M, -120 + rng() * 240, PLATEAU, -100 - rng() * 12, 13 + rng() * 5, rng);
+  const styles = MM.facades.modern;
+  cityBlock(N, MM, { x: 60, y: PLATEAU, z: -114, bays: 15, depthBays: 9, floors: 5, style: styles[0] });
+  cityBlock(N, MM, { x: 114, y: PLATEAU, z: -120, bays: 10, depthBays: 11, floors: 4, style: styles[1] });
+  cityBlock(N, MM, { x: -30, y: PLATEAU, z: -132, bays: 23, depthBays: 10, floors: 5, style: styles[2] });
+  cityBlock(N, MM, { x: 20, y: PLATEAU, z: -200, bays: 30, depthBays: 14, floors: 6, style: styles[4] });
+  cityBlock(N, MM, { x: -90, y: PLATEAU, z: -230, bays: 20, depthBays: 12, floors: 5, style: styles[3] });
+  for (let i = 0; i < 9; i++) stonePine(N, MM, -120 + rng() * 240, PLATEAU, -100 - rng() * 12, 13 + rng() * 5, rng);
 }
 
 function buildVittoriano(B, M) {
@@ -503,38 +503,51 @@ function buildCity(B, M, rng) {
   cityGrid(B, M, rng, { cell: 48, extent: 800, y: STREET, styles: M.facades.modern, floors: [4, 7], blocked, flatChance: 0.2 });
 }
 
-export function buildToday(M) {
+// `remains` holds what survives from antiquity (plus the bare terrain); `modern` holds
+// everything built since. They use separate material sets so that each can be dissolved.
+export function buildToday(M, MM) {
   const group = new THREE.Group();
-  const B = new Builder();
+  const remains = new THREE.Group();
+  const modern = new THREE.Group();
+  const R = new Builder();
+  const N = new Builder();
   const rng = makeRng(7);
   const columns = { temple: [], shaft: [], capital: [] };
   const L = LAYOUT;
   const portico = columnParts(L.column.R, L.column.H, false, 1.5);
   const temple = columnParts(L.temple.R, L.temple.H, true);
 
-  buildGround(B, M);
-  buildRoad(B, M, rng);
-  buildHill(B, M, rng);
-  buildVittoriano(B, M);
-  buildChurch(B, M);
-  buildCuria(B, M, { ruin: true });
-  buildTempleRuin(B, M, rng, columns);
-  buildPorticoRuin(B, M, rng, columns);
-  buildTabernaeRuin(B, M, rng);
-  buildBoardwalk(B, M);
-  buildFragments(B, M, rng, portico.capital);
-  buildVisitors(B, M, rng);
-  buildCity(B, M, rng);
-  for (const [x, z, h] of [[62, 4, 15], [112, -24, 14], [118, -40, 16], [-80, 22, 13]]) stonePine(B, M, x, 0, z, h, rng);
-  B.span(M.grass, -148, -92, STREET, STREET + 0.12, -42, 22);
-  for (let i = 0; i < 9; i++) stonePine(B, M, -144 + rng() * 48, STREET, -38 + rng() * 56, 13 + rng() * 5, rng);
-  B.build(group);
+  buildGround(R, M, N, MM);
+  buildRoad(N, MM, rng);
+  buildHill(R, M, N, MM, rng);
+  buildVittoriano(N, MM);
+  buildChurch(N, MM);
+  buildCuria(R, M, { ruin: true });
+  buildTempleRuin(R, M, rng, columns);
+  buildPorticoRuin(R, M, rng, columns);
+  buildTabernaeRuin(R, M, rng);
+  buildBoardwalk(N, MM);
+  buildFragments(R, M, rng, portico.capital);
+  buildVisitors(N, MM, rng);
+  buildCity(N, MM, rng);
+  for (const [x, z, h] of [[62, 4, 15], [112, -24, 14], [118, -40, 16], [-80, 22, 13]]) stonePine(N, MM, x, 0, z, h, rng);
+  N.span(MM.grass, -148, -92, STREET, STREET + 0.12, -42, 22);
+  for (let i = 0; i < 9; i++) stonePine(N, MM, -144 + rng() * 48, STREET, -38 + rng() * 56, 13 + rng() * 5, rng);
+  R.build(remains);
+  N.build(modern);
 
-  group.add(instanced(portico.shaft, M.graniteOld, columns.shaft));
-  group.add(instanced(portico.base, M.marbleOld, columns.shaft));
-  group.add(instanced(portico.capital, M.marbleOldDouble, columns.capital));
-  group.add(instanced(temple.shaft, M.marbleOld, columns.temple));
-  group.add(instanced(temple.base, M.marbleOld, columns.temple));
-  group.add(instanced(temple.capital, M.marbleOldDouble, columns.temple));
-  return group;
+  // Earth at the ancient level. It is only shown while the modern street level is dissolved.
+  const earth = new THREE.Group();
+  const E = new Builder();
+  E.span(M.dirt, -1500, 1500, -1.2, -0.08, -1500, 1500);
+  E.build(earth);
+
+  remains.add(instanced(portico.shaft, M.graniteOld, columns.shaft));
+  remains.add(instanced(portico.base, M.marbleOld, columns.shaft));
+  remains.add(instanced(portico.capital, M.marbleOldDouble, columns.capital));
+  remains.add(instanced(temple.shaft, M.marbleOld, columns.temple));
+  remains.add(instanced(temple.base, M.marbleOld, columns.temple));
+  remains.add(instanced(temple.capital, M.marbleOldDouble, columns.temple));
+  group.add(remains, modern, earth);
+  return { group, remains, modern, earth };
 }

@@ -126,13 +126,13 @@ function scaleUV(g, su, sv) {
 
 function shaftGeometry(R, y0, y1, fluted, tile) {
   const profile = [];
-  const steps = 10;
+  const steps = fluted ? 6 : 4;
   for (let i = 0; i <= steps; i++) {
     const t = i / steps;
     profile.push(new THREE.Vector2(R * (1 - 0.15 * Math.pow(t, 1.8)), y0 + (y1 - y0) * t));
   }
   const flutes = 24;
-  const g = new THREE.LatheGeometry(profile, fluted ? flutes * 6 : 28);
+  const g = new THREE.LatheGeometry(profile, fluted ? flutes * 4 : 16);
   if (fluted) {
     const p = g.attributes.position;
     for (let i = 0; i < p.count; i++) {
@@ -140,7 +140,7 @@ function shaftGeometry(R, y0, y1, fluted, tile) {
       const z = p.getZ(i);
       const angle = Math.atan2(z, x);
       const u = (((angle / (Math.PI * 2)) * flutes) % 1 + 1) % 1;
-      const d = Math.abs(u - 0.5) / 0.4;
+      const d = Math.abs(u - 0.5) / 0.45;
       const depth = d < 1 ? Math.sqrt(1 - d * d) * 0.075 : 0;
       p.setXYZ(i, x * (1 - depth), p.getY(i), z * (1 - depth));
     }
@@ -156,12 +156,12 @@ function baseGeometry(R) {
     [0, 0.33], [1.3, 0.33], [1.36, 0.4], [1.36, 0.5], [1.3, 0.57], [1.2, 0.6], [1.14, 0.66],
     [1.14, 0.74], [1.2, 0.8], [1.24, 0.84], [1.24, 0.92], [1.18, 0.98], [1.0, 1.0],
   ].map(([r, y]) => new THREE.Vector2(r * R, y * R));
-  const mouldings = new THREE.LatheGeometry(points, 28);
+  const mouldings = new THREE.LatheGeometry(points, 16);
   return mergeGeometries([plain(plinth), plain(mouldings)]);
 }
 
 function leafGeometry(R, y0, angle, width, height, curl, bellRadius) {
-  const rows = 6;
+  const rows = 3;
   const positions = [];
   const uvs = [];
   const indices = [];
@@ -198,13 +198,13 @@ function capitalGeometry(R, y0) {
   };
   const parts = [];
   const profile = [];
-  for (let i = 0; i <= 8; i++) {
-    const y = y0 + (bellHeight * i) / 8;
+  for (let i = 0; i <= 4; i++) {
+    const y = y0 + (bellHeight * i) / 4;
     profile.push(new THREE.Vector2(bellRadius(y), y));
   }
   profile.push(new THREE.Vector2(0, y0 + bellHeight));
-  parts.push(plain(new THREE.LatheGeometry(profile, 24)));
-  parts.push(plain(new THREE.TorusGeometry(0.89 * R, 0.07 * R, 6, 24).rotateX(Math.PI / 2).translate(0, y0, 0)));
+  parts.push(plain(new THREE.LatheGeometry(profile, 16)));
+  parts.push(plain(new THREE.TorusGeometry(0.89 * R, 0.07 * R, 4, 16).rotateX(Math.PI / 2).translate(0, y0, 0)));
   for (let i = 0; i < 8; i++) {
     const a = (i / 8) * Math.PI * 2;
     parts.push(leafGeometry(R, y0 + 0.04 * R, a, 0.7 * R, 0.95 * R, 0.3 * R, bellRadius));
@@ -213,7 +213,7 @@ function capitalGeometry(R, y0) {
   for (let i = 0; i < 4; i++) {
     const a = Math.PI / 4 + (i * Math.PI) / 2;
     parts.push(leafGeometry(R, y0 + 0.5 * R, a, 0.42 * R, 1.75 * R, 0.5 * R, bellRadius));
-    const scroll = new THREE.TorusGeometry(0.15 * R, 0.07 * R, 6, 12)
+    const scroll = new THREE.TorusGeometry(0.15 * R, 0.07 * R, 4, 8)
       .rotateY(-a)
       .translate(1.5 * R * Math.cos(a), y0 + 1.82 * R, 1.5 * R * Math.sin(a));
     parts.push(plain(scroll));
@@ -228,7 +228,7 @@ function capitalGeometry(R, y0) {
   shape.quadraticCurveTo(c - dip, 0, c, c);
   shape.quadraticCurveTo(0, c - dip, -c, c);
   shape.quadraticCurveTo(-c + dip, 0, -c, -c);
-  const abacus = new THREE.ExtrudeGeometry(shape, { depth: 0.28 * R, bevelEnabled: false, curveSegments: 6 })
+  const abacus = new THREE.ExtrudeGeometry(shape, { depth: 0.28 * R, bevelEnabled: false, curveSegments: 3 })
     .rotateX(-Math.PI / 2)
     .translate(0, y0 + bellHeight, 0);
   parts.push(plain(abacus));
