@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forum of Caesar 3D</title>
+<style>
+  :root { color-scheme: dark; --panel: rgba(18, 20, 24, 0.72); --line: rgba(255, 255, 255, 0.14); --text: #f2efe8; --muted: #b9b3a6; --accent: #e8b563; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #0d0f12; color: var(--text); font: 14px/1.4 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, sans-serif; }
+  canvas { display: block; }
+  .panel { position: fixed; background: var(--panel); border: 1px solid var(--line); border-radius: 12px; backdrop-filter: blur(14px); -webkit-backdrop-filter: blur(14px); }
+  #title { top: 16px; left: 16px; padding: 12px 16px; max-width: 320px; }
+  #title h1 { margin: 0; font-size: 18px; font-weight: 650; letter-spacing: 0.01em; }
+  #title p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+  #views { top: 16px; right: 16px; padding: 6px; display: flex; gap: 4px; flex-wrap: wrap; max-width: calc(100vw - 32px); }
+  #bar { bottom: 20px; left: 50%; transform: translateX(-50%); padding: 6px; display: flex; gap: 6px; align-items: center; }
+  button { font: inherit; color: var(--text); background: transparent; border: 0; border-radius: 8px; padding: 8px 14px; cursor: pointer; white-space: nowrap; }
+  button:hover { background: rgba(255, 255, 255, 0.1); }
+  button.active { background: var(--accent); color: #1c1608; font-weight: 600; }
+  .pick { display: flex; align-items: center; gap: 6px; padding: 0 8px 0 10px; color: var(--muted); white-space: nowrap; }
+  select { font: inherit; color: var(--text); background: rgba(255, 255, 255, 0.1); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; cursor: pointer; }
+  .sep { width: 1px; align-self: stretch; background: var(--line); margin: 4px 2px; }
+  #hint { bottom: 76px; left: 50%; transform: translateX(-50%); position: fixed; color: var(--muted); font-size: 12px; text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8); pointer-events: none; white-space: nowrap; }
+  #divider { position: fixed; top: 0; bottom: 0; width: 44px; margin-left: -22px; cursor: ew-resize; display: none; touch-action: none; }
+  #divider::before { content: ""; position: absolute; left: 21px; top: 0; bottom: 0; width: 2px; background: rgba(255, 255, 255, 0.9); box-shadow: 0 0 8px rgba(0, 0, 0, 0.6); }
+  #divider::after { content: "\2039  \203A"; position: absolute; left: 0; top: 50%; width: 44px; height: 44px; margin-top: -22px; border-radius: 50%; background: #fff; color: #222; font-size: 20px; line-height: 42px; text-align: center; box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5); }
+  .side-tag { position: fixed; top: 84px; padding: 4px 10px; border-radius: 6px; background: var(--panel); border: 1px solid var(--line); font-size: 12px; display: none; pointer-events: none; }
+  .label { position: fixed; left: 0; top: 0; padding: 3px 9px; border-radius: 999px; background: rgba(12, 14, 18, 0.78); border: 1px solid var(--line); font-size: 12px; white-space: nowrap; pointer-events: none; will-change: transform; }
+  .label::after { content: ""; position: absolute; left: 50%; top: 100%; width: 1px; height: 14px; background: rgba(255, 255, 255, 0.7); }
+  #loading { position: fixed; inset: 0; display: grid; place-items: center; background: #0d0f12; font-size: 16px; color: var(--muted); transition: opacity 0.6s; z-index: 10; }
+  #loading.done { opacity: 0; pointer-events: none; }
+  @media (max-width: 720px) { #title { max-width: 60vw; } #hint { display: none; } button { padding: 8px 10px; } #bar { flex-wrap: wrap; justify-content: center; width: calc(100vw - 24px); } }
+</style>
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+<div id="title" class="panel">
+  <h1>Forum of Caesar</h1>
+  <p id="era">Rome, today</p>
+</div>
+<div id="views" class="panel"></div>
+<div id="labels"></div>
+<div id="divider"></div>
+<div id="tag-ancient" class="side-tag">Ancient</div>
+<div id="tag-today" class="side-tag">Today</div>
+<div id="hint">Drag to orbit, right drag to pan, scroll to zoom. Space flips between eras.</div>
+<div id="bar" class="panel">
+  <button id="btn-today" class="active">Today</button>
+  <button id="btn-ancient">Ancient Rome</button>
+  <div class="sep"></div>
+  <button id="btn-compare">Compare</button>
+  <button id="btn-labels" class="active">Labels</button>
+  <div class="sep"></div>
+  <label class="pick" title="Lower this if the view feels slow. It also lowers itself on slow computers.">Graphics
+    <select id="quality">
+      <option value="low">Low</option>
+      <option value="medium">Medium</option>
+      <option value="high">High</option>
+      <option value="max">Max</option>
+    </select>
+  </label>
+</div>
+<div id="loading">Rebuilding Rome…</div>
+<script type="module" src="./src/main.js"></script>
+</body>
+</html>
