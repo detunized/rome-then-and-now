@@ -28,6 +28,7 @@ const LABELS = [
 createViewer({
   views: VIEWS,
   labels: LABELS,
+  places: [{ name: 'Forum square', at: [20, 30, 0], look: [-56, 0] }],
   rebuildTop: 29,
   text: {
     today: 'Rome, today',

@@ -47,7 +47,8 @@
 {
   "imports": {
     "three": "https://cdn.jsdelivr.net/npm/three@0.170.0/build/three.module.js",
-    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/"
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.170.0/examples/jsm/",
+    "three-mesh-bvh": "https://cdn.jsdelivr.net/npm/three-mesh-bvh@0.8.3/build/index.module.js"
   }
 }
 </script>
@@ -63,8 +64,10 @@
 <div id="divider"></div>
 <div id="tag-ancient" class="side-tag">Ancient</div>
 <div id="tag-today" class="side-tag">Today</div>
-<div id="hint">Drag to look around, scroll to zoom, W A S D to fly, Q and E for down and up. Space goes to the next step.</div>
+<div id="hint">Drag to look around, scroll to zoom, W A S D to fly, Q and E for down and up. Space goes to the next step, G starts a walk.</div>
 <div id="bar" class="panel">
+  <button id="btn-walk" title="Run and jump around as a legionary. Shortcut: G">Walk</button>
+  <div class="sep"></div>
   <button id="btn-compare" title="Ancient and today side by side, with a divider you can drag">Compare</button>
   <button id="btn-labels" class="active">Labels</button>
   <button id="btn-fade" class="active" title="Dissolve everything built since antiquity while the monument is rebuilt">Fade modern</button>

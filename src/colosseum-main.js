@@ -23,6 +23,13 @@ createViewer({
     { text: 'Colossus of the Sun', at: [-128, 44, -46], era: 'ancient', core: true },
     { text: 'Temple of Venus and Roma', at: [-262, 44, 0], era: 'ancient', core: true },
   ],
+  places: [
+    { name: 'North side', at: [-46, 20, -92], look: [-30, -60] },
+    { name: 'Arena', at: [32, 5, 0], look: [-40, 0] },
+    { name: 'Lower seats', at: [45, 30, 11.6], look: [-40, -24] },
+    { name: 'Upper seats', at: [56.5, 40, 18.6], look: [-40, -24] },
+    { name: 'Top gallery', at: [-20.6, 41, -61.8], look: [0, 0] },
+  ],
   rebuildTop: 57,
   sun: [-0.8, 0.52, -0.36],
   shadowExtent: [250, 215],

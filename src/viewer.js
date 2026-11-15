@@ -11,6 +11,7 @@ import { createMaterials, noiseTexture } from './textures.js';
 import { createSky } from './sky.js';
 import { buildGhost } from './ghost.js';
 import { installSoftShadows, createBounceLight } from './lighting.js';
+import { createWalk } from './walk.js';
 
 
 // Final colour treatment, applied after tone mapping: a little more contrast and
@@ -41,8 +42,9 @@ const GradeShader = {
     }`,
 };
 
-// The viewer engine. A scene definition supplies the camera views, labels, texts and a
-// `build(sets)` function that returns the geometry for each layer:
+// The viewer engine. A scene definition supplies the camera views, labels, texts, the
+// places walk mode can start from (see walk.js) and a `build(sets)` function that returns
+// the geometry for each layer:
 //   today.remains  what survives from antiquity      today.modern   everything built since
 //   ancient.core   the reconstructed monument        ancient.context  its ancient surroundings
 export function createViewer(definition) {
@@ -297,6 +299,16 @@ export function createViewer(definition) {
     return { ...label, node, point: new THREE.Vector3().fromArray(label.at) };
   });
 
+  const walk = createWalk({
+    scene, camera, renderer, controls,
+    layers: () => [today.modern, today.remains, today.earth, ancient.core, ancient.context].filter(Boolean),
+    solids: solidGroups,
+    places: definition.places ?? [{ name: 'Start', at: [VIEWS[0].target[0], VIEWS[0].target[1] + 60, VIEWS[0].target[2]] }],
+    hint: $('hint'),
+    onChange: syncUi,
+    onTimeStep: nextMode,
+  });
+
   const smooth = (x) => {
     const t = Math.min(1, Math.max(0, x));
     return t * t * (3 - 2 * t);
@@ -399,8 +411,27 @@ export function createViewer(definition) {
     }
   }
 
+  // What the walking character runs into: every layer that is more than half there. The
+  // monument is solid as an outline too, from the moment that outline is complete, or
+  // earlier if the modern layer has dissolved by then, so that its floors take over from
+  // the modern ones without a gap.
+  function solidGroups() {
+    const state = timelineState(stage);
+    const modern = state.today && state.modern > 0.5;
+    const groups = [];
+    if (modern) groups.push(today.modern);
+    if (state.today && state.remains > 0.5) groups.push(today.remains, today.earth);
+    if (stage >= 1 || (stage > 0 && !modern)) groups.push(ancient.core);
+    if (state.context > 0.5) groups.push(ancient.context);
+    return groups.filter(Boolean);
+  }
+
   function currentMode() {
     return compare ? 'compare' : MODES[Math.round(stageTarget)];
+  }
+
+  function nextMode() {
+    setMode({ today: 'rebuild', rebuild: 'ancient', ancient: 'today', compare: 'today' }[currentMode()]);
   }
 
   function setMode(mode) {
@@ -415,7 +446,10 @@ export function createViewer(definition) {
 
   function setCompare(on) {
     compare = on;
-    if (on) split = 0.5;
+    if (on) {
+      split = 0.5;
+      walk.exit();
+    }
     syncUi();
   }
 
@@ -426,6 +460,7 @@ export function createViewer(definition) {
     $('btn-ancient').classList.toggle('active', mode === 'ancient');
     $('btn-compare').classList.toggle('active', compare);
     $('btn-labels').classList.toggle('active', showLabels);
+    $('btn-walk').classList.toggle('active', walk.active);
     $('btn-fade').classList.toggle('active', fadeModern);
     $('btn-surviving').classList.toggle('active', showSurviving);
     $('btn-surviving').style.display = canShowSurviving ? '' : 'none';
@@ -463,6 +498,10 @@ export function createViewer(definition) {
     syncUi();
   });
   $('btn-compare').addEventListener('click', () => setCompare(!compare));
+  $('btn-walk').addEventListener('click', () => {
+    if (walk.active) walk.exit();
+    else enterWalk();
+  });
   $('btn-labels').addEventListener('click', () => {
     showLabels = !showLabels;
     syncUi();
@@ -500,8 +539,19 @@ export function createViewer(definition) {
   window.addEventListener('keyup', (event) => held.delete(event.code));
   window.addEventListener('blur', () => held.clear());
 
+  function enterWalk() {
+    if (!today) return;
+    setCompare(false);
+    cameraTween = null;
+    walk.enter();
+  }
+
   window.addEventListener('keydown', (event) => {
     if (event.target.tagName === 'SELECT') return;
+    if (walk.active) {
+      walk.onKeyDown(event);
+      return;
+    }
     if (FLY_KEYS[event.code] || event.code.startsWith('Shift')) {
       held.add(event.code);
       if (event.code.startsWith('Arrow')) event.preventDefault();
@@ -509,7 +559,9 @@ export function createViewer(definition) {
     }
     if (event.code === 'Space') {
       event.preventDefault();
-      setMode({ today: 'rebuild', rebuild: 'ancient', ancient: 'today', compare: 'today' }[currentMode()]);
+      nextMode();
+    } else if (event.code === 'KeyG') {
+      if (!event.repeat) enterWalk();
     } else if (event.key === 'c') setCompare(!compare);
     else if (event.key === 'l') {
       showLabels = !showLabels;
@@ -608,15 +660,20 @@ export function createViewer(definition) {
     $('btn-rebuild').classList.toggle('reached', stage >= 1);
     $('btn-ancient').classList.toggle('reached', stage >= 2);
     $('btn-today').classList.toggle('reached', true);
-    if (cameraTween) {
-      cameraTween.t = Math.min(1, cameraTween.t + dt / 1.6);
-      const k = cameraTween.t * cameraTween.t * (3 - 2 * cameraTween.t);
-      camera.position.lerpVectors(cameraTween.fromPosition, cameraTween.toPosition, k);
-      controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.toTarget, k);
-      if (cameraTween.t === 1) cameraTween = null;
+    if (walk.active) {
+      cameraTween = null;
+      walk.update(dt);
+    } else {
+      if (cameraTween) {
+        cameraTween.t = Math.min(1, cameraTween.t + dt / 1.6);
+        const k = cameraTween.t * cameraTween.t * (3 - 2 * cameraTween.t);
+        camera.position.lerpVectors(cameraTween.fromPosition, cameraTween.toPosition, k);
+        controls.target.lerpVectors(cameraTween.fromTarget, cameraTween.toTarget, k);
+        if (cameraTween.t === 1) cameraTween = null;
+      }
+      fly(dt);
+      controls.update();
     }
-    fly(dt);
-    controls.update();
     sky.mesh.position.copy(camera.position);
     sky.uniforms.time.value += dt;
 
@@ -666,7 +723,7 @@ export function createViewer(definition) {
     syncUi();
     $('loading').classList.add('done');
     window.app = {
-      sky, scene, camera, controls, renderer, sun, composer, applyQuality, setEra, setMode, setCompare, goToView, VIEWS, hooks,
+      sky, scene, camera, controls, renderer, sun, composer, applyQuality, setEra, setMode, setCompare, goToView, VIEWS, hooks, walk,
       // Renders at a fixed pixel width regardless of the window, for video capture.
       setRenderWidth: (pixels) => {
         renderer.setPixelRatio(pixels / window.innerWidth);
