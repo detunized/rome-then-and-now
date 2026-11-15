@@ -4,6 +4,9 @@ import { LineSegments2 } from 'three/addons/lines/LineSegments2.js';
 import { LineSegmentsGeometry } from 'three/addons/lines/LineSegmentsGeometry.js';
 import { LineMaterial } from 'three/addons/lines/LineMaterial.js';
 
+// How dark the outline's shadow is, as a share of a solid building's shadow.
+const SHADOW_STRENGTH = 0.42;
+
 function columnProxy(R, H) {
   const shaftHeight = H - 3.3 * R;
   const parts = [
@@ -37,23 +40,33 @@ export function buildGhost(core, skipMaterials, columnSets, plane) {
   });
   const fill = new THREE.MeshLambertMaterial({
     color: 0x4fa9ff, emissive: 0x174f8c, transparent: true, opacity: 0.38, depthWrite: false,
-    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes,
+    polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1, clippingPlanes, clipShadows: true,
   });
+  // The outline casts a lighter shadow than a solid building. Only part of its surface is
+  // written into the shadow map, in a fine dither that the shadow filtering blends into
+  // an even, partial shade.
+  const shadow = new THREE.MeshDepthMaterial({ depthPacking: THREE.RGBADepthPacking });
+  shadow.onBeforeCompile = (shader) => {
+    shader.fragmentShader = shader.fragmentShader.replace('void main() {', `void main() {
+      if (fract(52.9829189 * fract(dot(gl_FragCoord.xy, vec2(0.06711056, 0.00583715)))) > ${SHADOW_STRENGTH.toFixed(2)}) discard;`);
+  };
+  shadow.customProgramCacheKey = () => 'outline shadow';
   const line = new LineMaterial({ color: 0xeaf7ff, linewidth: 2, transparent: true, opacity: 0.95, depthWrite: false, clippingPlanes });
   const outline = (positions) => new LineSegments2(new LineSegmentsGeometry().setPositions(positions), line);
   group.userData.line = line;
 
-  const addSurface = (object, order) => {
+  const addSurface = (object, order, castsShadow = false) => {
     object.renderOrder = order;
-    object.castShadow = false;
+    object.castShadow = castsShadow;
     object.receiveShadow = false;
+    if (castsShadow) object.customDepthMaterial = shadow;
     group.add(object);
   };
 
   for (const mesh of core.children) {
     if (mesh.isInstancedMesh || skipMaterials.has(mesh.material)) continue;
     addSurface(new THREE.Mesh(mesh.geometry, depth), 10);
-    addSurface(new THREE.Mesh(mesh.geometry, fill), 11);
+    addSurface(new THREE.Mesh(mesh.geometry, fill), 11, true);
     addSurface(outline(longEdges(new THREE.EdgesGeometry(mesh.geometry, 28).attributes.position.array, 0.3)), 12);
   }
 
@@ -64,7 +77,7 @@ export function buildGhost(core, skipMaterials, columnSets, plane) {
       matrices.forEach((m, i) => instances.setMatrixAt(i, m));
       instances.instanceMatrix.needsUpdate = true;
       instances.computeBoundingSphere();
-      addSurface(instances, order);
+      addSurface(instances, order, material === fill);
     }
     const edges = new THREE.EdgesGeometry(proxy, 28).attributes.position;
     const positions = new Float32Array(edges.count * 3 * matrices.length);
