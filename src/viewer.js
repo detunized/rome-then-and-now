@@ -10,6 +10,7 @@ import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js'
 import { createMaterials, noiseTexture } from './textures.js';
 import { createSky } from './sky.js';
 import { buildGhost } from './ghost.js';
+import { installSoftShadows, createBounceLight } from './lighting.js';
 
 
 // Final colour treatment, applied after tone mapping: a little more contrast and
@@ -45,6 +46,7 @@ const GradeShader = {
 //   today.remains  what survives from antiquity      today.modern   everything built since
 //   ancient.core   the reconstructed monument        ancient.context  its ancient surroundings
 export function createViewer(definition) {
+  installSoftShadows();
   const VIEWS = definition.views;
   const LABELS = definition.labels;
 
@@ -105,7 +107,8 @@ export function createViewer(definition) {
   sun.shadow.bias = -0.0004;
   sun.shadow.normalBias = 0.06;
   scene.add(sun, sun.target);
-  scene.add(new THREE.HemisphereLight(0xb8d0f4, 0xb89c78, 0.62));
+  scene.add(new THREE.HemisphereLight(0xb8d0f4, 0xb89c78, 0.5));
+  scene.add(createBounceLight(sunDirection));
 
   let composer = null;
   let occlusion = null;
