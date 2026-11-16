@@ -1,7 +1,9 @@
 import * as THREE from 'three';
 import { createLegionary } from './legionary.js';
 
-// Walk mode: a character that runs and jumps through the scene, in third or first person.
+// Walk mode: a character that runs and jumps through the scene, steered like a first person
+// game: the mouse turns the character, W and S go forward and back, A and D step sideways.
+// It is seen from behind, through its eyes, or from the front.
 //
 // The world is whatever the viewer says is solid right now, one triangle tree per layer,
 // all built when walk mode is first entered. The character collides in two parts:
@@ -33,6 +35,7 @@ const CAMERA_PIVOT = 1.25;
 const CAMERA_MARGIN = 0.25;
 const NEAR = 0.15;
 const LOOK_SPEED = 0.0023;
+const FIELD_OF_VIEW = 70;
 
 const FEET = [[0, 0]];
 for (let i = 0; i < 8; i++) FEET.push([0.22 * Math.cos(i * Math.PI / 4), 0.22 * Math.sin(i * Math.PI / 4)]);
@@ -103,6 +106,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
   let locked = false;
   let grounded = false;
   let firstPerson = false;
+  let fromFront = false;
   let yaw = 0;
   let pitch = -0.25;
   let facing = 0;
@@ -306,7 +310,8 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
 
   function placeCamera(dt) {
     const feetY = position.y + lag;
-    camera.rotation.set(pitch, yaw, 0, 'YXZ');
+    if (fromFront) camera.rotation.set(-pitch, yaw + Math.PI, 0, 'YXZ');
+    else camera.rotation.set(pitch, yaw, 0, 'YXZ');
     if (firstPerson) {
       camera.position.set(position.x, feetY + EYE, position.z);
       figure.group.visible = false;
@@ -345,11 +350,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
       lag = Math.abs(lag) < 0.002 ? 0 : lag * Math.exp(-dt * 16);
     }
     const speed = dt > 0 ? Math.hypot(position.x - fromX, position.z - fromZ) / dt : 0;
-    if (firstPerson) facing = yaw + Math.PI;
-    else if (speed > 0.5) {
-      const turn = Math.atan2(position.x - fromX, position.z - fromZ) - facing;
-      facing += Math.atan2(Math.sin(turn), Math.cos(turn)) * (1 - Math.exp(-dt * 14));
-    }
+    facing = yaw + Math.PI;
     const moving = figure.animate(dt, { speed, grounded, pitch });
     figure.group.position.set(position.x, position.y + lag, position.z);
     figure.group.rotation.y = facing;
@@ -363,20 +364,33 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
   function showHint() {
     if (!active) return;
     const jumps = places.length > 1 ? ` 1 to ${places.length} jump to other places,` : '';
-    const text = `W A S D to move, Space to jump, Shift to run. V changes the view, R goes back to the start,${jumps} T travels in time, Esc leaves.`;
+    const text = `Mouse to turn, W A S D to move, Space to jump, Shift to run. V changes the view, R goes back to the start,${jumps} T travels in time, Esc leaves.`;
     if (!ready) hint.textContent = 'Getting ready to walk…';
     else hint.textContent = locked ? text : `Click the scene to look around. ${text}`;
   }
 
+  // Asks for raw mouse movement first, without the pointer acceleration of the system,
+  // which makes aiming feel loose. Not every browser offers it.
   function lockPointer() {
-    const request = canvas.requestPointerLock?.();
-    if (request?.catch) request.catch(() => {});
+    const plain = () => canvas.requestPointerLock?.()?.catch?.(() => {});
+    try {
+      const request = canvas.requestPointerLock?.({ unadjustedMovement: true });
+      if (request?.catch) request.catch((error) => (error.name === 'NotSupportedError' ? plain() : undefined));
+    } catch {
+      plain();
+    }
+  }
+
+  function nextView() {
+    if (firstPerson) [firstPerson, fromFront] = [false, true];
+    else if (fromFront) fromFront = false;
+    else firstPerson = true;
   }
 
   async function enter() {
     if (active) return;
     active = true;
-    orbit = { position: camera.position.clone(), quaternion: camera.quaternion.clone(), near: camera.near, enabled: controls.enabled };
+    orbit = { position: camera.position.clone(), quaternion: camera.quaternion.clone(), near: camera.near, fov: camera.fov, enabled: controls.enabled };
     orbitHint = hint.textContent;
     controls.enabled = false;
     keys.clear();
@@ -395,6 +409,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     if (!active) return;
     layers().forEach(treeOf);
     camera.near = NEAR;
+    camera.fov = FIELD_OF_VIEW;
     camera.updateProjectionMatrix();
     ready = true;
     showHint();
@@ -413,6 +428,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     camera.position.copy(orbit.position);
     camera.quaternion.copy(orbit.quaternion);
     camera.near = orbit.near;
+    camera.fov = orbit.fov;
     camera.updateProjectionMatrix();
     controls.enabled = orbit.enabled;
     controls.update();
@@ -432,7 +448,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     } else if (event.repeat) return;
     else if (event.code === 'Escape' || event.code === 'KeyG') exit();
     else if (!ready) return;
-    else if (event.code === 'KeyV') firstPerson = !firstPerson;
+    else if (event.code === 'KeyV') nextView();
     else if (event.code === 'KeyR') goTo(0);
     else if (event.code === 'KeyT') onTimeStep();
     else if (/^Digit[1-9]$/.test(event.code)) goTo(Number(event.code.slice(5)) - 1);
@@ -472,7 +488,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     velocity,
     figure,
     get state() {
-      return { active, ready, locked, grounded, firstPerson, yaw, pitch, cameraDistance, position: position.toArray(), velocity: velocity.toArray() };
+      return { active, ready, locked, grounded, firstPerson, fromFront, yaw, pitch, cameraDistance, position: position.toArray(), velocity: velocity.toArray() };
     },
     look(newYaw, newPitch) {
       yaw = newYaw;
@@ -483,6 +499,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     },
     setFirstPerson(on) {
       firstPerson = on;
+      fromFront = false;
     },
   };
 }
