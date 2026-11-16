@@ -21,6 +21,9 @@
   .picture img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
   .picture .blueprint { opacity: 0; transition: opacity 0.6s; }
   .place:hover .blueprint, .place:focus-visible .blueprint { opacity: 1; }
+  .picture img.walker { inset: auto 4% -3% auto; width: auto; height: 68%; object-fit: contain; filter: drop-shadow(0 8px 12px rgba(0, 0, 0, 0.55)); transition: transform 0.25s; transform-origin: 50% 100%; }
+  .place:hover .walker, .place:focus-visible .walker { transform: scale(1.06) rotate(-3deg); }
+  .badge { position: absolute; left: 14px; bottom: 14px; padding: 6px 13px; border-radius: 999px; background: rgba(12, 14, 18, 0.8); border: 1px solid var(--line); font-size: 14px; font-weight: 600; }
   .text { display: flex; align-items: center; gap: 16px; padding: 18px 22px 20px; }
   .text div { flex: 1; min-width: 0; }
   h2 { margin: 0; font-size: 24px; font-weight: 650; }
@@ -28,7 +31,7 @@
   .go { flex: none; padding: 10px 20px; border-radius: 999px; background: var(--accent); color: #1c1608; font-weight: 650; white-space: nowrap; }
   footer { margin-top: 30px; color: var(--muted); font-size: 14px; }
   @media (max-width: 480px) { .text { flex-direction: column; align-items: stretch; } .go { text-align: center; } }
-  @media (prefers-reduced-motion: reduce) { .place, .picture .blueprint { transition: none; } .place:hover { transform: none; } }
+  @media (prefers-reduced-motion: reduce) { .place, .picture .blueprint, .picture .walker { transition: none; } .place:hover, .place:hover .walker { transform: none; } }
 </style>
 </head>
 <body>
@@ -55,6 +58,8 @@
       <div class="picture">
         <img src="assets/cards/colosseum-ancient.jpg" alt="The Colosseum rebuilt, with its full outer wall" width="1280" height="720">
         <img class="blueprint" src="assets/cards/colosseum-blueprint.jpg" alt="" width="1280" height="720" loading="lazy">
+        <span class="badge">Walk and fly around inside</span>
+        <img class="walker" src="assets/cards/legionary.png" alt="A blocky Roman legionary you can play" width="266" height="520">
       </div>
       <div class="text">
         <div>
