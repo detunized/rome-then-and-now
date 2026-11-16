@@ -29,6 +29,17 @@ const TIERS = [
   { from: 21.3, rows: 6, y: 24.7 },
 ];
 
+// Bays with a gate to the arena, and bays where a stair climbs to the seating. The flights
+// from tier to tier stand in the two bays after each stair.
+const GATES = [0, 20, 40, 60];
+const STAIRS = [11, 22, 30, 50, 56, 65];
+const GATE_VAULT = { width: 3.6, height: 5.3, door: { w: 3, h: 3.1 } };
+const STAIR_VAULT = { width: 2.8, height: 2.8, door: { w: 2.2, h: 1.45 } };
+const GATE_MOUTH = 44.25;
+const WALK_LOW = { y: 11.2, wall: 33.0, edge: 33.25 };
+const WALK_HIGH = { y: 20.6, wall: 21.3, edge: 21.55 };
+const GALLERY = 33.9;
+
 const STONE = ['travertineBlocks', 'travertineWorn'];
 const BRICK = ['brick', 'brickOld'];
 const MARBLE = ['marble', 'marbleOld'];
@@ -65,14 +76,15 @@ function stations(a, b, count) {
   return result;
 }
 
-// Box with a four sided base in the ground plane and independent heights at each corner.
+// Prism with a convex base in the ground plane and independent heights at each corner.
 function hexa(base, bottoms, tops) {
+  const count = base.length;
   let points = base;
-  let low = Array.isArray(bottoms) ? bottoms : [bottoms, bottoms, bottoms, bottoms];
-  let high = Array.isArray(tops) ? tops : [tops, tops, tops, tops];
+  let low = Array.isArray(bottoms) ? bottoms : base.map(() => bottoms);
+  let high = Array.isArray(tops) ? tops : base.map(() => tops);
   let area = 0;
-  for (let i = 0; i < 4; i++) {
-    const j = (i + 1) % 4;
+  for (let i = 0; i < count; i++) {
+    const j = (i + 1) % count;
     area += points[i][0] * points[j][1] - points[j][0] * points[i][1];
   }
   if (area > 0) {
@@ -83,17 +95,76 @@ function hexa(base, bottoms, tops) {
   const b = points.map((p, i) => [p[0], low[i], p[1]]);
   const t = points.map((p, i) => [p[0], high[i], p[1]]);
   const positions = [];
-  const quad = (p, q, r, s) => positions.push(...p, ...q, ...r, ...p, ...r, ...s);
-  quad(t[0], t[1], t[2], t[3]);
-  quad(b[3], b[2], b[1], b[0]);
-  for (let i = 0; i < 4; i++) {
-    const j = (i + 1) % 4;
-    quad(b[i], b[j], t[j], t[i]);
+  const last = count - 1;
+  for (let i = 1; i < last; i++) {
+    positions.push(...t[0], ...t[i], ...t[i + 1]);
+    positions.push(...b[last], ...b[last - i], ...b[last - i - 1]);
+  }
+  for (let i = 0; i < count; i++) {
+    const j = (i + 1) % count;
+    if (high[i] - low[i] < THIN && high[j] - low[j] < THIN) continue;
+    positions.push(...b[i], ...b[j], ...t[j], ...b[i], ...t[j], ...t[i]);
   }
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geometry.computeVertexNormals();
   return geometry;
+}
+
+// Passages are cut out of the solid blocks. A block and what is left of it are prisms:
+// { points, lows, highs }. A hole is { points, floor, top }: a convex outline with the inside
+// on the left of every edge, open between the height `floor` and the surface `top(x, z)`.
+const THIN = 1e-4;
+
+// Cuts a prism along the vertical plane through a and b: [part on the left, part on the right].
+function split(piece, a, b) {
+  const length = Math.hypot(b[0] - a[0], b[1] - a[1]);
+  const sides = piece.points.map(([x, z]) => ((b[0] - a[0]) * (z - a[1]) - (b[1] - a[1]) * (x - a[0])) / length);
+  const halves = [[], []];
+  piece.points.forEach((p, i) => {
+    const j = (i + 1) % piece.points.length;
+    const corner = [p, piece.lows[i], piece.highs[i]];
+    if (sides[i] >= -THIN) halves[0].push(corner);
+    if (sides[i] <= THIN) halves[1].push(corner);
+    if ((sides[i] > THIN && sides[j] < -THIN) || (sides[i] < -THIN && sides[j] > THIN)) {
+      const s = sides[i] / (sides[i] - sides[j]);
+      const q = piece.points[j];
+      const mix = (from, to) => from + (to - from) * s;
+      const cut = [[mix(p[0], q[0]), mix(p[1], q[1])], mix(piece.lows[i], piece.lows[j]), mix(piece.highs[i], piece.highs[j])];
+      halves[0].push(cut);
+      halves[1].push(cut);
+    }
+  });
+  return halves.map((corners) => {
+    let area = 0;
+    corners.forEach(([p], i) => {
+      const [q] = corners[(i + 1) % corners.length];
+      area += p[0] * q[1] - q[0] * p[1];
+    });
+    if (Math.abs(area) < 2 * THIN) return null;
+    return { points: corners.map((c) => c[0]), lows: corners.map((c) => c[1]), highs: corners.map((c) => c[2]) };
+  });
+}
+
+// What is left of a prism once a hole has been cut out of it.
+function subtract(piece, hole) {
+  const left = [];
+  let inside = piece;
+  for (let i = 0; i < hole.points.length; i++) {
+    const [within, beyond] = split(inside, hole.points[i], hole.points[(i + 1) % hole.points.length]);
+    if (!within) return [piece];
+    if (beyond) left.push(beyond);
+    inside = within;
+  }
+  const tops = inside.points.map(([x, z]) => hole.top(x, z));
+  const below = inside.highs.every((high) => high <= hole.floor + THIN);
+  const above = inside.lows.every((low, i) => low >= tops[i] - THIN);
+  if (below || above) return [piece];
+  const under = inside.highs.map((high, i) => Math.max(inside.lows[i], Math.min(high, hole.floor)));
+  if (under.some((high, i) => high > inside.lows[i] + THIN)) left.push({ ...inside, highs: under });
+  const over = inside.lows.map((low, i) => Math.min(inside.highs[i], Math.max(low, tops[i])));
+  if (over.some((low, i) => low < inside.highs[i] - THIN)) left.push({ ...inside, lows: over });
+  return left;
 }
 
 // Places geometry whose local X runs from `a` to `b` and whose local +Z points to `inward`.
@@ -173,9 +244,35 @@ export function buildColosseum(sets) {
     const { matrix, length } = alongMatrix(point(k, d), point(k + 1, d), inward(k), y);
     emit(survives, pair, new THREE.BoxGeometry(length + 0.15, height, depth).translate(length / 2, height / 2, depth / 2 - projection), matrix);
   };
-  const block = (k, d0, d1, y0, y1, survives, pair) => {
-    emit(survives, pair, hexa([point(k, d0), point(k + 1, d0), point(k + 1, d1), point(k, d1)], y0, y1));
+  const holes = [];
+  const hole = (points, top, floor = 0) => {
+    let area = 0;
+    points.forEach((p, i) => {
+      const q = points[(i + 1) % points.length];
+      area += p[0] * q[1] - q[0] * p[1];
+    });
+    const xs = points.map((p) => p[0]);
+    const zs = points.map((p) => p[1]);
+    holes.push({
+      points: area < 0 ? [...points].reverse() : points, top, floor,
+      box: [Math.min(...xs), Math.max(...xs), Math.min(...zs), Math.max(...zs)],
+    });
   };
+  // A block with the passages cut out of it.
+  const solid = (survives, pair, points, bottoms, tops) => {
+    const reached = holes.filter(({ box }) => points.some(([x]) => x >= box[0]) && points.some(([x]) => x <= box[1])
+      && points.some(([, z]) => z >= box[2]) && points.some(([, z]) => z <= box[3]));
+    const spread = (heights) => (Array.isArray(heights) ? heights : points.map(() => heights));
+    const whole = { points, lows: spread(bottoms), highs: spread(tops) };
+    let pieces = [whole];
+    for (const cut of reached) pieces = pieces.flatMap((piece) => subtract(piece, cut));
+    for (const piece of pieces) {
+      emit(survives, pair, piece === whole ? hexa(points, bottoms, tops) : hexa(piece.points, piece.lows, piece.highs));
+    }
+  };
+  const along = (k, t, d) => (t === 0 ? point(k, d) : t === 1 ? point(k + 1, d) : between(k, t, d));
+  const quad = (k, d0, d1, t0 = 0, t1 = 1) => [along(k, t0, d0), along(k, t1, d0), along(k, t1, d1), along(k, t0, d1)];
+  const block = (k, d0, d1, y0, y1, survives, pair) => solid(survives, pair, quad(k, d0, d1), y0, y1);
   const post = (k, d, y, height, radius, survives, pair = STONE, segments = 10) => {
     const [x, z] = point(k, d);
     emit(survives, pair, new THREE.CylinderGeometry(radius * 0.93, radius, height, segments).translate(0, height / 2, 0), place(x, y, z));
@@ -195,6 +292,120 @@ export function buildColosseum(sets) {
     if (rng() < 0.3) run = rng() < 0.7;
     upperStands.push(innerStands(k) || run);
   }
+
+  // Walking routes. Each passage is a hole in the blocks built further down, lined with a
+  // vault of its own: `lane(k)` gives points along the middle of bay k, `depth` metres in
+  // and `aside` metres off the centre line.
+  const lane = (k) => {
+    const [x, z] = between(k, 0.5, 0);
+    const [ux, uz] = between(k, 0.5, 1).map((value, i) => value - [x, z][i]);
+    const unit = Math.hypot(ux, uz);
+    return (depth, aside = 0) => [x + ux * depth - (uz / unit) * aside, z + uz * depth + (ux / unit) * aside];
+  };
+  const strip = (at, d0, d1, width) => [at(d0, -width / 2), at(d0, width / 2), at(d1, width / 2), at(d1, -width / 2)];
+  // Vaulted passage down the middle of bay k, from depth d0 at height y0 to d1 at y1. The
+  // hole runs on past both ends by `before` and `after`, so that no sliver of a block
+  // that ends there is left standing in the way.
+  const passage = (k, d0, d1, y0, y1, vault, pair, before = 0, after = 0) => {
+    const at = lane(k);
+    const [fromX, fromZ] = at(d0);
+    const [toX, toZ] = at(d1);
+    const length = Math.hypot(toX - fromX, toZ - fromZ);
+    const slope = (y1 - y0) / length;
+    const top = (x, z) => y0 + vault.height - 0.05 + (slope * ((x - fromX) * (toX - fromX) + (z - fromZ) * (toZ - fromZ))) / length;
+    hole(strip(at, d0 - before, d1 + after, vault.width - 0.1), top);
+    const { matrix } = alongMatrix(at(d0, -vault.width / 2), at(d0, vault.width / 2), inward(k), y0);
+    const shear = new THREE.Matrix4().set(1, 0, 0, 0, 0, 1, slope, 0, 0, 0, 1, 0, 0, 0, 0, 1);
+    const lining = wallGeometry(vault.width, vault.height, length, [{ x: vault.width / 2, y: 0, ...vault.door, arch: true }]);
+    emit(true, pair, lining, matrix.multiply(shear));
+  };
+  // Straight flight along bay k, between the depths d0 and d1, climbing from t0 to t1.
+  const flight = (k, d0, d1, t0, t1, base, from, rise, count, survives) => {
+    for (let i = 0; i < count; i++) {
+      const edge = (n) => t0 + ((t1 - t0) * n) / count;
+      emit(survives, FACING, hexa(quad(k, d0, d1, edge(i), edge(i + 1)), base, from + (i + 1) * rise));
+    }
+  };
+  // Half steps on the seat rows, which makes a stair of them.
+  const aisle = (k, tier, t0, t1) => {
+    for (let row = 0; row < tier.rows - 1; row++) {
+      const top = tier.y + row * RISE + 0.45;
+      const back = tier.from - (row + 1) * ROW;
+      emit(false, MARBLE, hexa(quad(k, back, back + ROW / 2, t0, t1), top - 0.1, top + RISE / 2));
+    }
+  };
+  const chord = (k, d) => Math.hypot(point(k + 1, d)[0] - point(k, d)[0], point(k + 1, d)[1] - point(k, d)[1]);
+
+  // Gates: a vaulted way from the inner ring to the lowest seats, then an open cut through
+  // those seats and the podium.
+  for (const k of GATES) {
+    const at = lane(k);
+    passage(k, RING_C + RING_THICK - 0.02, GATE_MOUTH + 0.1, 0, 0, GATE_VAULT, STONE, 0.1);
+    hole(strip(at, GATE_MOUTH, ARENA + 0.6, GATE_VAULT.width), () => 1000);
+    emit(true, STONE, hexa(strip(at, RING_C + RING_THICK, ARENA, GATE_VAULT.width + 0.1), -0.1, 0.05));
+    // Facing on both sides of the cut, stepped like the seats it passes.
+    const half = GATE_VAULT.width / 2;
+    const facing = (d0, d1, top) => {
+      for (const side of [-1, 1]) emit(true, FACING, hexa([at(d0, side * half), at(d1, side * half), at(d1, side * (half - 0.25)), at(d0, side * (half - 0.25))], 0, top));
+    };
+    for (let row = 0; TIERS[0].from - row * ROW > GATE_MOUTH + 0.1; row++) {
+      facing(Math.max(GATE_MOUTH + 0.1, TIERS[0].from - (row + 1) * ROW), TIERS[0].from - row * ROW, TIERS[0].y + row * RISE + 0.45);
+    }
+    facing(TIERS[0].from, ARENA, 3.6);
+  }
+
+  // Stairs: from the inner ring up under the seats to a door in the wall above the lowest
+  // tier, then flights along the foot of each wall further up, as far as the gallery.
+  for (const k of STAIRS) {
+    const at = lane(k);
+    const foot = RING_C + RING_THICK + 0.9;
+    const steps = 40;
+    const rise = WALK_LOW.y / steps;
+    const tread = 0.37;
+    const head = foot + steps * tread;
+    passage(k, RING_C + RING_THICK - 0.02, foot, 0, 0, STAIR_VAULT, BRICK, 0.1);
+    passage(k, foot, head, 0, WALK_LOW.y, STAIR_VAULT, BRICK);
+    passage(k, head, WALK_LOW.edge + 0.02, WALK_LOW.y, WALK_LOW.y, STAIR_VAULT, FACING, 0, 0.03);
+    emit(true, STONE, hexa(strip(at, RING_C + RING_THICK, foot, STAIR_VAULT.width + 0.1), -0.1, 0.02));
+    for (let i = 1; i <= steps; i++) {
+      const end = i < steps ? foot + i * tread : WALK_LOW.edge + 0.05;
+      emit(true, STONE, hexa(strip(at, foot + (i - 1) * tread, end, STAIR_VAULT.width + 0.1), 0, i * rise));
+    }
+    aisle(k, TIERS[0], 0.36, 0.64);
+
+    const side = k + 1;
+    const next = k + 2;
+    const lowRise = (TIERS[1].y + 0.45 - WALK_LOW.y) / 13;
+    const lowEnd = 0.1 + Math.min((12 * 0.3) / chord(side, WALK_LOW.edge), 0.84);
+    flight(side, WALK_LOW.wall, WALK_LOW.edge + 0.9, 0.1, lowEnd, WALK_LOW.y - 0.2, WALK_LOW.y, lowRise, 12, true);
+    aisle(side, TIERS[1], lowEnd - 0.27, lowEnd);
+
+    const highRise = (TIERS[2].y + 0.45 - WALK_HIGH.y) / 16;
+    const highEnd = 0.93 - (15 * 0.29) / chord(side, WALK_HIGH.edge);
+    flight(side, WALK_HIGH.wall, WALK_HIGH.edge + 0.75, 0.93, highEnd, WALK_HIGH.y - 0.2, WALK_HIGH.y, highRise, 15, true);
+    aisle(side, TIERS[2], highEnd, highEnd + 0.25);
+
+    // Two flights with a landing between them, against the wall under the gallery.
+    const wall = RING_C + RING_THICK;
+    const seats = TIERS[2].y + (TIERS[2].rows - 1) * RISE + 0.45;
+    const topRise = (GALLERY - seats) / 22;
+    const run = (j) => (10 * 0.29) / chord(j, wall);
+    const start = highEnd + 0.27;
+    const landing = seats + 11 * topRise;
+    const stands = innerStands(side) && innerStands(next);
+    const mass = (j, t0, t1, y) => emit(stands, FACING, hexa(quad(j, wall, wall + 1.1, t0, t1), seats - 1, y));
+    // The lowest three steps lie inside the marble seats and show where those are gone.
+    flight(side, wall, wall + 1.1, start - 0.3 * run(side), start, seats - 1, seats - 3 * topRise - 0.01, topRise, 3, stands);
+    flight(side, wall, wall + 1.1, start, start + run(side), seats - 1, seats, topRise, 10, stands);
+    mass(side, start + run(side), 1, landing);
+    mass(next, 0, 0.15, landing);
+    flight(next, wall, wall + 1.1, 0.15, 0.15 + run(next), seats - 1, landing, topRise, 10, stands);
+    mass(next, 0.15 + run(next), 0.32 + run(next), GALLERY);
+  }
+  // Ruined parts that a route stands on are kept whatever the dice say: everything in the
+  // bay of a gate or a stair, the upper tiers one bay on, the top tier two bays on.
+  const routeBays = [new Set([...GATES, ...STAIRS]), new Set(STAIRS.map((k) => k + 1)), new Set(STAIRS.map((k) => k + 2))];
+  const carries = (k, reach) => routeBays.slice(0, reach).some((bays) => bays.has(k));
 
   for (let k = 0; k < BAYS; k++) {
     const stands = outerStands(k);
@@ -265,27 +476,28 @@ export function buildColosseum(sets) {
     for (const [index, tier] of TIERS.entries()) {
       const outer = tier.from - tier.rows * ROW;
       const top = tier.y + tier.rows * RISE - 0.25;
-      const kept = index === 0 ? rng() < 0.93 : rng() < 0.82;
-      emit(kept, SUBSTRUCTURE, hexa([point(k, outer), point(k + 1, outer), point(k + 1, tier.from), point(k, tier.from)], 0, [top, top, tier.y - 0.2, tier.y - 0.2]));
+      const lucky = index === 0 ? rng() < 0.93 : rng() < 0.82;
+      const kept = lucky || carries(k, index + 1);
+      solid(kept, SUBSTRUCTURE, quad(k, outer, tier.from), 0, [top, top, tier.y - 0.2, tier.y - 0.2]);
       // Radial brick wall along the pier line, standing slightly proud of the slope.
       const [ox, oz] = point(k, outer);
       const [ix, iz] = point(k, tier.from);
       const length = Math.hypot(ix - ox, iz - oz);
       const sx = ((iz - oz) / length) * 0.4;
       const sz = (-(ix - ox) / length) * 0.4;
-      emit(true, BRICK, hexa([[ox - sx, oz - sz], [ox + sx, oz + sz], [ix + sx, iz + sz], [ix - sx, iz - sz]], 0, [top + 0.2, top + 0.2, tier.y + 0.3, tier.y + 0.3]));
+      solid(true, BRICK, [[ox - sx, oz - sz], [ox + sx, oz + sz], [ix + sx, iz + sz], [ix - sx, iz - sz]], 0, [top + 0.2, top + 0.2, tier.y + 0.3, tier.y + 0.3]);
       for (let row = 0; row < tier.rows; row++) {
         const rowTop = tier.y + row * RISE + 0.45;
         block(k, tier.from - (row + 1) * ROW, tier.from - row * ROW, rowTop - 0.9, rowTop, false, MARBLE);
       }
     }
-    block(k, 33.25, 34.5, 0, 11.2, rng() < 0.85, SUBSTRUCTURE);
+    block(k, 33.25, 34.5, 0, 11.2, rng() < 0.85 || carries(k, 2), SUBSTRUCTURE);
     block(k, 33.25, 34.5, 11.2, 11.5, false, MARBLE);
     block(k, 33.0, 33.25, 0, 14.5, false, MARBLE);
-    block(k, 21.55, 22.5, 0, 20.6, rng() < 0.8, SUBSTRUCTURE);
+    block(k, 21.55, 22.5, 0, 20.6, rng() < 0.8 || carries(k, 2), SUBSTRUCTURE);
     block(k, 21.55, 22.5, 20.6, 20.9, false, MARBLE);
     block(k, 21.3, 21.55, 0, 24.9, false, MARBLE);
-    block(k, RING_C + RING_THICK, 16.8, 0, 27.5, rng() < 0.8, SUBSTRUCTURE);
+    block(k, RING_C + RING_THICK, 16.8, 0, 27.5, rng() < 0.8 || carries(k, 3), SUBSTRUCTURE);
 
     // Top gallery with a colonnade, wooden seats and a tiled roof.
     post(k, 15.3, 33.9, 8.6, 0.4, false, MARBLE);
@@ -316,6 +528,27 @@ export function buildColosseum(sets) {
   const deck = arenaEdge.filter(([x]) => x > 20);
   const east = [...deck.filter(([, z]) => z < 0), ...deck.filter(([, z]) => z >= 0)];
   N.add(new THREE.ShapeGeometry(ovalShape(east)).rotateX(-Math.PI / 2), MM.wood, place(0, 0.03, 0));
+
+  // Visitor stair from the deck down to the floor of the hypogeum, along the middle passage.
+  const deckEdge = Math.min(...east.map(([x]) => x));
+  const descent = { steps: 22, tread: 0.32, half: 0.8, rise: (0.03 + 6.2) / 22 };
+  const descentY = (x) => 0.03 - ((deckEdge - x) / descent.tread) * descent.rise;
+  const sloped = (x0, x1, z0, z1, under, over) => hexa(
+    [[x0, z0], [x1, z0], [x1, z1], [x0, z1]],
+    [descentY(x0) + under, descentY(x1) + under, descentY(x1) + under, descentY(x0) + under],
+    over === null ? descentY(x0) : [descentY(x0) + over, descentY(x1) + over, descentY(x1) + over, descentY(x0) + over],
+  );
+  for (let i = 1; i < descent.steps; i++) {
+    const x = deckEdge - i * descent.tread;
+    N.add(sloped(x, x + descent.tread, -descent.half, descent.half, -descent.rise - 0.22, null), MM.wood);
+  }
+  for (const z of [-descent.half, descent.half - 0.06]) {
+    const bottom = deckEdge - (descent.steps - 1) * descent.tread;
+    N.add(sloped(bottom, deckEdge, z, z + 0.06, 0.94, 1), MM.iron);
+    for (let x = deckEdge - 0.03; x > bottom; x -= descent.tread * 3) {
+      N.add(sloped(x - 0.03, x + 0.03, z, z + 0.06, -0.3, 0.95), MM.iron);
+    }
+  }
 
   // The two brick buttresses of 1807 and 1826 that hold the broken ends of the outer wall.
   const buttress = (k, heights) => {

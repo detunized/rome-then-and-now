@@ -149,6 +149,9 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
 
   let touched = false;
   let bumpedHead = false;
+  // Only in the air do the ground rays start high enough to see what is under the rounded
+  // end of the capsule. On foot a ledge there is too high to step on and has to stop it.
+  let raysSeeFloor = false;
   const capsule = {
     intersectsBounds: (box) => box.intersectsBox(bounds),
     intersectsTriangle: (triangle) => {
@@ -160,13 +163,14 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
         triangle.getNormal(normal);
         if (normal.dot(push.subVectors(before, onTriangle)) < 0) normal.negate();
         push.copy(normal).multiplyScalar(RADIUS);
-      } else if (push.y > WALKABLE * distance) {
+      } else if (raysSeeFloor && push.y > WALKABLE * distance) {
         // A floor under the capsule belongs to the ground rays.
         return;
       } else if (push.y > 0) {
         // A ledge or slope touching the rounded underside pushes sideways only, so the
         // capsule does not ride up over it.
         const flat = Math.hypot(push.x, push.z);
+        if (flat < 1e-6) return;
         const wanted = Math.sqrt(RADIUS * RADIUS - push.y * push.y);
         push.set(push.x, 0, push.z).multiplyScalar((wanted - flat) / flat);
       } else {
@@ -182,6 +186,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
   // Pushes the capsule out of the walls and returns true if a ceiling pushed it down.
   // `clearance` is how far above the feet the capsule starts.
   function collideWalls(clearance) {
+    raysSeeFloor = clearance === AIR_CLEARANCE;
     segment.start.set(position.x, position.y + clearance + RADIUS, position.z);
     segment.end.set(position.x, position.y + HEIGHT - RADIUS, position.z);
     before.copy(segment.start);
@@ -232,7 +237,9 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     const clearance = walking ? STEP_HEIGHT : AIR_CLEARANCE;
     if (collideWalls(clearance) && velocity.y > 0) velocity.y = 0;
 
-    const top = Math.max(startY, position.y) + clearance;
+    // The capsule leaves anything under its rounded end to the ground rays, so they have
+    // to start no lower than the middle of that end.
+    const top = Math.max(startY, position.y) + (walking ? clearance : clearance + RADIUS);
     const reach = walking ? STEP_HEIGHT : 0;
     const ground = groundUnder(top, top - position.y + reach + 0.01);
     if (walking) {
