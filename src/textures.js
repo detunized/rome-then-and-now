@@ -397,13 +397,21 @@ const definitions = {
 
 const cache = new Map();
 
-const loader = new THREE.TextureLoader();
+const images = new THREE.ImageLoader();
 
+// A dropped request would leave the surface black, so a failed image is asked for again.
 function photo(file, colour) {
-  const loaded = loader.load(`./assets/textures/${file}.jpg`);
+  const loaded = new THREE.Texture();
   loaded.wrapS = loaded.wrapT = THREE.RepeatWrapping;
   loaded.anisotropy = 8;
   if (colour) loaded.colorSpace = THREE.SRGBColorSpace;
+  const request = (retries) => images.load(`./assets/textures/${file}.jpg`, (image) => {
+    loaded.image = image;
+    loaded.needsUpdate = true;
+  }, undefined, () => {
+    if (retries > 0) setTimeout(() => request(retries - 1), 600);
+  });
+  request(4);
   return loaded;
 }
 
