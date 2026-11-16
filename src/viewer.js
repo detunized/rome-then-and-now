@@ -299,14 +299,15 @@ export function createViewer(definition) {
     return { ...label, node, point: new THREE.Vector3().fromArray(label.at) };
   });
 
+  const places = definition.places ?? [{ name: 'Start', at: [VIEWS[0].target[0], VIEWS[0].target[1] + 60, VIEWS[0].target[2]] }];
   const walk = createWalk({
     scene, camera, renderer, controls,
     layers: () => [today.modern, today.remains, today.earth, ancient.core, ancient.context].filter(Boolean),
     solids: solidGroups,
-    places: definition.places ?? [{ name: 'Start', at: [VIEWS[0].target[0], VIEWS[0].target[1] + 60, VIEWS[0].target[2]] }],
+    places,
     hint: $('hint'),
     onChange: syncUi,
-    onTimeStep: nextMode,
+    onMode: (index) => setMode(MODES[index]),
   });
 
   const smooth = (x) => {
@@ -461,6 +462,7 @@ export function createViewer(definition) {
     $('btn-compare').classList.toggle('active', compare);
     $('btn-labels').classList.toggle('active', showLabels);
     $('btn-walk').classList.toggle('active', walk.active);
+    document.body.classList.toggle('walking', walk.active);
     $('btn-fade').classList.toggle('active', fadeModern);
     $('btn-surviving').classList.toggle('active', showSurviving);
     $('btn-surviving').style.display = canShowSurviving ? '' : 'none';
@@ -478,13 +480,19 @@ export function createViewer(definition) {
     };
   }
 
-  VIEWS.forEach((view, i) => {
+  // The menu lists camera views, or the places to walk to while walk mode is on.
+  const menuButton = (name, kind, action) => {
     const button = document.createElement('button');
-    button.textContent = view.name;
-    button.title = `Shortcut: ${i + 1}`;
-    button.addEventListener('click', () => goToView(view));
+    button.textContent = name;
+    button.className = kind;
+    button.addEventListener('click', action);
     $('views').appendChild(button);
-  });
+  };
+  VIEWS.forEach((view) => menuButton(view.name, 'for-orbit', () => goToView(view)));
+  places.forEach((place, i) => menuButton(place.name, 'for-walk', () => {
+    walk.goTo(i);
+    walk.capture();
+  }));
 
   $('btn-today').addEventListener('click', () => setMode('today'));
   $('btn-rebuild').addEventListener('click', () => setMode('rebuild'));
@@ -548,6 +556,10 @@ export function createViewer(definition) {
 
   window.addEventListener('keydown', (event) => {
     if (event.target.tagName === 'SELECT') return;
+    if (event.code === 'KeyH') {
+      if (!event.repeat) $('hint').classList.toggle('hidden');
+      return;
+    }
     if (walk.active) {
       walk.onKeyDown(event);
       return;
@@ -566,7 +578,7 @@ export function createViewer(definition) {
     else if (event.key === 'l') {
       showLabels = !showLabels;
       syncUi();
-    } else if (VIEWS[Number(event.key) - 1]) goToView(VIEWS[Number(event.key) - 1]);
+    } else if (MODES[Number(event.key) - 1]) setMode(MODES[Number(event.key) - 1]);
   });
 
   const divider = $('divider');

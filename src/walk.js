@@ -24,6 +24,10 @@ const JUMP_HEIGHT = 1.25;
 const JUMP_SPEED = Math.sqrt(2 * GRAVITY * JUMP_HEIGHT);
 const WALK_SPEED = 5;
 const SPRINT_SPEED = 9;
+const FLY_SPEED = 14;
+const CLIMB_SPEED = 9;
+// Longest pause between two presses of Space that still counts as a double tap.
+const DOUBLE_TAP = 0.3;
 const FALL_SPEED = 45;
 const LOWEST = -40;
 const MAX_STEP = 1 / 100;
@@ -87,7 +91,7 @@ function collisionGeometry(group) {
 // at this moment. `places` is a list of { name, at: [x, y, z], look: [x, z] }: the character
 // is dropped from `at` onto whatever is below it, facing `look`. The first place is where
 // it starts.
-export function createWalk({ scene, camera, renderer, controls, layers, solids, places, hint, onChange, onTimeStep }) {
+export function createWalk({ scene, camera, renderer, controls, layers, solids, places, hint, onChange, onMode }) {
   const canvas = renderer.domElement;
   const figure = createLegionary();
   figure.group.visible = false;
@@ -107,6 +111,9 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
   let grounded = false;
   let firstPerson = false;
   let fromFront = false;
+  let flying = false;
+  let lastSpaceTap = -Infinity;
+  let currentPlace = 0;
   let yaw = 0;
   let pitch = -0.25;
   let facing = 0;
@@ -217,22 +224,27 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
       ahead += move[1];
     }
     const length = Math.hypot(right, ahead) || 1;
-    const speed = keys.has('ShiftLeft') || keys.has('ShiftRight') ? SPRINT_SPEED : WALK_SPEED;
+    const shift = keys.has('ShiftLeft') || keys.has('ShiftRight');
+    const speed = flying ? FLY_SPEED : shift ? SPRINT_SPEED : WALK_SPEED;
     const wantedX = ((right * Math.cos(yaw) - ahead * Math.sin(yaw)) / length) * speed;
     const wantedZ = ((-right * Math.sin(yaw) - ahead * Math.cos(yaw)) / length) * speed;
-    const grip = 1 - Math.exp(-dt * (grounded ? 14 : 4));
+    const grip = 1 - Math.exp(-dt * (flying ? 7 : grounded ? 14 : 4));
     velocity.x += (wantedX - velocity.x) * grip;
     velocity.z += (wantedZ - velocity.z) * grip;
     if (right === 0 && ahead === 0 && Math.hypot(velocity.x, velocity.z) < 0.02) velocity.x = velocity.z = 0;
 
-    if (grounded && keys.has('Space')) {
+    if (flying) grounded = false;
+    else if (grounded && keys.has('Space')) {
       velocity.y = JUMP_SPEED;
       grounded = false;
     }
     const walking = grounded;
     const startY = position.y;
     if (walking) velocity.y = 0;
-    else {
+    else if (flying) {
+      const wantedY = ((keys.has('Space') ? 1 : 0) - (shift ? 1 : 0)) * CLIMB_SPEED;
+      velocity.y += (wantedY - velocity.y) * (1 - Math.exp(-dt * 10));
+    } else {
       const rising = velocity.y;
       velocity.y = Math.max(rising - GRAVITY * dt, -FALL_SPEED);
       position.y += (rising - velocity.y) * dt * 0.5;
@@ -256,10 +268,24 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
       position.y = ground;
       if (velocity.y <= 0) {
         velocity.y = 0;
-        grounded = true;
+        // A flight ends by coming down onto the ground, not by skimming over it.
+        if (!flying || shift) land();
       }
     }
     if (position.y < LOWEST) goTo(0);
+  }
+
+  function land() {
+    grounded = true;
+    if (!flying) return;
+    flying = false;
+    showHint();
+  }
+
+  function toggleFlying() {
+    flying = !flying;
+    if (flying) velocity.y = 0;
+    showHint();
   }
 
   // True when the character is inside a closed shape or under a floor that has just appeared.
@@ -274,12 +300,14 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     position.set(x, hit ? hit.point.y : y, z);
     velocity.set(0, 0, 0);
     grounded = false;
+    flying = false;
     lag = 0;
   }
 
   function goTo(index) {
     const place = places[index];
     if (!place) return;
+    currentPlace = index;
     drop(...place.at);
     if (place.look) {
       yaw = Math.atan2(position.x - place.look[0], position.z - place.look[1]);
@@ -363,10 +391,27 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
 
   function showHint() {
     if (!active) return;
-    const jumps = places.length > 1 ? ` 1 to ${places.length} jump to other places,` : '';
-    const text = `Mouse to turn, W A S D to move, Space to jump, Shift to run. V changes the view, R goes back to the start,${jumps} T travels in time, Esc leaves.`;
-    if (!ready) hint.textContent = 'Getting ready to walk…';
-    else hint.textContent = locked ? text : `Click the scene to look around. ${text}`;
+    if (!ready) {
+      hint.innerHTML = '<b>Getting ready to walk…</b>';
+      return;
+    }
+    const key = (...names) => names.map((name) => `<kbd>${name}</kbd>`).join('');
+    const item = (keys, text) => `<span>${keys} ${text}</span>`;
+    const items = [
+      locked ? '<span>Mouse to look around</span>' : '<b>Click the scene to steer with the mouse</b>',
+      item(key('W', 'A', 'S', 'D'), 'move'),
+      item(key('Space'), flying ? 'up' : 'jump'),
+      item(key('Shift'), flying ? 'down' : 'run'),
+      item(key('Space', 'Space'), flying ? 'walk again' : 'fly'),
+      item(key('V'), 'change the view'),
+      item(key('1', '2', '3'), 'today, blueprint, ancient'),
+      places.length > 1 ? item(key('P'), 'next place') : '',
+      item(key('R'), 'back to the start'),
+      locked ? item(key('Esc'), 'free the mouse') : '',
+      item(key('G'), 'stop walking'),
+      item(key('H'), 'hide this help'),
+    ];
+    hint.innerHTML = items.join('');
   }
 
   // Asks for raw mouse movement first, without the pointer acceleration of the system,
@@ -391,7 +436,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     if (active) return;
     active = true;
     orbit = { position: camera.position.clone(), quaternion: camera.quaternion.clone(), near: camera.near, fov: camera.fov, enabled: controls.enabled };
-    orbitHint = hint.textContent;
+    orbitHint = hint.innerHTML;
     controls.enabled = false;
     keys.clear();
     lockPointer();
@@ -422,6 +467,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     if (!active) return;
     active = false;
     ready = false;
+    flying = false;
     keys.clear();
     figure.group.visible = false;
     renderer.shadowMap.needsUpdate = true;
@@ -432,7 +478,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     camera.updateProjectionMatrix();
     controls.enabled = orbit.enabled;
     controls.update();
-    hint.textContent = orbitHint;
+    hint.innerHTML = orbitHint;
     if (document.pointerLockElement === canvas) document.exitPointerLock();
     onChange();
   }
@@ -445,13 +491,19 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
       // A button that has the focus would be pressed by Space.
       document.activeElement?.blur();
       keys.add(event.code);
+      if (event.code === 'Space' && !event.repeat && ready) {
+        const now = performance.now() / 1000;
+        const doubled = now - lastSpaceTap < DOUBLE_TAP;
+        lastSpaceTap = doubled ? -Infinity : now;
+        if (doubled) toggleFlying();
+      }
     } else if (event.repeat) return;
     else if (event.code === 'Escape' || event.code === 'KeyG') exit();
     else if (!ready) return;
     else if (event.code === 'KeyV') nextView();
     else if (event.code === 'KeyR') goTo(0);
-    else if (event.code === 'KeyT') onTimeStep();
-    else if (/^Digit[1-9]$/.test(event.code)) goTo(Number(event.code.slice(5)) - 1);
+    else if (event.code === 'KeyP') goTo((currentPlace + 1) % places.length);
+    else if (/^Digit[1-3]$/.test(event.code)) onMode(Number(event.code.slice(5)) - 1);
   }
 
   window.addEventListener('keyup', (event) => keys.delete(event.code));
@@ -460,10 +512,9 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     if (active && !locked) lockPointer();
   });
   document.addEventListener('pointerlockchange', () => {
-    const released = locked && document.pointerLockElement !== canvas;
+    // The browser frees the mouse on Esc without passing the key on. Walking goes on, so
+    // that the menus can be used; a click on the scene takes the mouse again.
     locked = document.pointerLockElement === canvas;
-    // The browser frees the mouse on Esc without passing the key on, so that is the way out.
-    if (released) exit();
     showHint();
   });
   document.addEventListener('mousemove', (event) => {
@@ -474,6 +525,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
 
   return {
     enter,
+    capture: lockPointer,
     exit,
     update,
     onKeyDown,
@@ -488,7 +540,7 @@ export function createWalk({ scene, camera, renderer, controls, layers, solids, 
     velocity,
     figure,
     get state() {
-      return { active, ready, locked, grounded, firstPerson, fromFront, yaw, pitch, cameraDistance, position: position.toArray(), velocity: velocity.toArray() };
+      return { active, ready, locked, grounded, flying, firstPerson, fromFront, yaw, pitch, cameraDistance, position: position.toArray(), velocity: velocity.toArray() };
     },
     look(newYaw, newPitch) {
       yaw = newYaw;
