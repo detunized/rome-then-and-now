@@ -140,8 +140,17 @@ export function createViewer(definition) {
     occlusion = new GTAOPass(scene, camera, window.innerWidth, window.innerHeight);
     occlusion.updateGtaoMaterial({ radius: 3.2, distanceExponent: 1.2, thickness: 1.5, scale: 1.5, samples: 8, distanceFallOff: 1, screenSpaceRadius: false });
     occlusion.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 6, radiusExponent: 1.2, rings: 2, samples: 8 });
+    // The occlusion pass draws the scene with its own material, which knows nothing of the
+    // outline's clipping plane, so the outline is kept out of it.
+    const computeOcclusion = occlusion.render.bind(occlusion);
+    occlusion.render = (...parameters) => {
+      const shown = ghost.visible;
+      ghost.visible = false;
+      computeOcclusion(...parameters);
+      ghost.visible = shown;
+    };
     composer.addPass(occlusion);
-    bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.7, 1.6);
+    bloom =new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 0.22, 0.7, 1.6);
     composer.addPass(bloom);
     composer.addPass(new OutputPass());
     composer.addPass(new ShaderPass(GradeShader));
